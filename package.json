@@ -1,0 +1,17 @@
+{
+  "name": "motocare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Catatan servis, ganti oli, dan belanja part motor (Apps Script + Google Sheets + GitHub Pages)",
+  "scripts": {
+    "test": "node --test backend/test/",
+    "push": "cd backend && clasp push --force",
+    "serve": "npx --yes serve frontend -l 5173"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@google/clasp": "^3.4.1"
+  }
+}
