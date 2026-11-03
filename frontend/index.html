@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'self'; form-action 'self'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#e8590c">
+  <meta name="description" content="Catatan servis, ganti oli, dan belanja part motor">
+  <title>MotoCare</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#app">Lewati ke konten</a>
+
+  <header class="app-header" id="app-header" hidden>
+    <a class="brand" href="#/" aria-label="MotoCare, ke beranda">
+      <img src="assets/icon.svg" alt="" width="28" height="28">
+      <span>MotoCare</span>
+    </a>
+    <div class="motor-switch">
+      <label class="visually-hidden" for="motor-select">Motor aktif</label>
+      <select id="motor-select"></select>
+      <span class="motor-odo" id="motor-odo" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <nav class="app-nav" id="app-nav" aria-label="Navigasi utama" hidden>
+    <a href="#/" data-nav="home"><span class="nav-icon" aria-hidden="true">⌂</span><span>Beranda</span></a>
+    <a href="#/records" data-nav="records"><span class="nav-icon" aria-hidden="true">☰</span><span>Riwayat</span></a>
+    <a href="#/records/new" data-nav="new" class="nav-add"><span class="nav-icon" aria-hidden="true">＋</span><span>Tambah</span></a>
+    <a href="#/reminders" data-nav="reminders"><span class="nav-icon" aria-hidden="true">⏰</span><span>Pengingat</span></a>
+    <a href="#/more" data-nav="more" class="nav-more"><span class="nav-icon" aria-hidden="true">⋯</span><span>Lainnya</span></a>
+    <a href="#/motors" data-nav="motors" class="nav-desktop"><span class="nav-icon" aria-hidden="true">🏍</span><span>Motor</span></a>
+    <a href="#/reports" data-nav="reports" class="nav-desktop"><span class="nav-icon" aria-hidden="true">▤</span><span>Laporan</span></a>
+    <a href="#/settings" data-nav="settings" class="nav-desktop"><span class="nav-icon" aria-hidden="true">⚙</span><span>Pengaturan</span></a>
+  </nav>
+
+  <main id="app" class="app-main" tabindex="-1">
+    <noscript><p class="card">MotoCare membutuhkan JavaScript.</p></noscript>
+  </main>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>
