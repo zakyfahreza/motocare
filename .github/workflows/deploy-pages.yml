@@ -1,0 +1,46 @@
+name: Deploy frontend (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tulis frontend/js/config.js dari variable MOTOCARE_API_URL
+        env:
+          API_URL: ${{ vars.MOTOCARE_API_URL }}
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::warning::Repository variable MOTOCARE_API_URL kosong. Pengguna harus mengisi API URL di layar login."
+          fi
+          node -e 'const fs=require("fs");fs.writeFileSync("frontend/js/config.js","// Dibuat otomatis oleh deploy-pages.yml\nexport const API_URL = "+JSON.stringify(process.env.API_URL||"")+";\n");'
+          cat frontend/js/config.js
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: frontend
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

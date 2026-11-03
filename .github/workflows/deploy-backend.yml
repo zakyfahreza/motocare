@@ -1,0 +1,66 @@
+name: Deploy backend (Apps Script)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Siapkan kredensial clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
+          GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
+        run: |
+          missing=""
+          [ -z "$CLASPRC_JSON" ] && missing="$missing CLASPRC_JSON"
+          [ -z "$CLASP_SCRIPT_ID" ] && missing="$missing CLASP_SCRIPT_ID"
+          [ -z "$GAS_DEPLOYMENT_ID" ] && missing="$missing GAS_DEPLOYMENT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Secret belum diisi:$missing (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          node -e 'require("fs").writeFileSync("backend/.clasp.json", JSON.stringify({ scriptId: process.env.CLASP_SCRIPT_ID, rootDir: "." }))'
+
+      - name: clasp push
+        working-directory: backend
+        run: ../node_modules/.bin/clasp push --force
+
+      - name: Perbarui deployment web app (URL /exec tetap)
+        working-directory: backend
+        env:
+          GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
+        run: ../node_modules/.bin/clasp update-deployment "$GAS_DEPLOYMENT_ID" --description "CI ${GITHUB_SHA::7}"
+
+      - name: Bersihkan kredensial
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" backend/.clasp.json
