@@ -1,0 +1,4 @@
+# Hanya manifest dan src/** yang diunggah ke Apps Script.
+**/**
+!appsscript.json
+!src/**/*.js

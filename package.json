@@ -4,7 +4,7 @@
   "private": true,
   "description": "Catatan servis, ganti oli, dan belanja part motor (Apps Script + Google Sheets + GitHub Pages)",
   "scripts": {
-    "test": "node --test backend/test/",
+    "test": "node --test \"backend/test/**/*.test.js\"",
     "push": "cd backend && clasp push --force",
     "serve": "npx --yes serve frontend -l 5173"
   },
