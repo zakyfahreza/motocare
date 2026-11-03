@@ -13,15 +13,26 @@
 
 Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
+> **Status 2026-11-03.** Semua kode selesai dan diuji tanpa akun Google:
+> - `npm test`: 22 test lulus (unit `logic.js` + uji integrasi seluruh action API di atas mock Apps Script `backend/test/gas-mock.js`).
+>   Mock ini menggantikan `__testRepo()` di T1.3.
+> - E2E browser (Edge headless) terhadap `npm run dev:mock`: 16 skenario lulus di 360px & 1280px, terang & gelap, tanpa error CSP.
+> - axe-core: 0 pelanggaran WCAG 2 AA di semua halaman; Lighthouse Accessibility halaman login = 100.
+> - `clasp show-file-status`: hanya `appsscript.json` + `src/**` yang ikut di-push.
+>
+> **Belum bisa diverifikasi agent** (butuh akun Google/GitHub pemilik): T0.3, T1.6, T5.4 (manual), lalu
+> T2.8 (jalankan `backend/scripts/smoke.ps1` ke URL asli), T5.1–T5.3 (workflow hijau di GitHub),
+> T6.3 (`dev_seedDummy()` + `dev_benchmark()` di Apps Script asli), T7.2 (checklist di URL GitHub Pages), T7.3.
+
 ---
 
 ## Fase 0 — Persiapan Repository
 
-- [ ] **T0.1 Struktur folder & file dasar**
+- [x] **T0.1 Struktur folder & file dasar**
   Buat struktur sesuai `design.md` §2 (file kosong/placeholder boleh), `.gitignore` (§6.6), `package.json` (§6.5).
   KT: `npm install` berhasil; `git status` tidak menampilkan file yang seharusnya di-ignore.
 
-- [ ] **T0.2 README kerangka**
+- [x] **T0.2 README kerangka**
   Judul, deskripsi singkat, arsitektur (copy diagram dari design §1), daftar isi bagian setup (diisi di T7.1).
   KT: README ter-render rapi di GitHub.
 
@@ -40,23 +51,23 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 1 — Fondasi Backend
 
-- [ ] **T1.1 `appsscript.json`, `.claspignore`, `.clasp.json.example`** (design §4.1)
+- [x] **T1.1 `appsscript.json`, `.claspignore`, `.clasp.json.example`** (design §4.1)
   `.claspignore` mengecualikan `test/**`, `**/*.md`, `.clasp.json.example`.
   KT: `npx clasp push` (dari `backend/`) hanya mengunggah `appsscript.json` dan `src/**`.
 
-- [ ] **T1.2 `config.js`, `response.js`**
+- [x] **T1.2 `config.js`, `response.js`**
   `APP_VERSION`, nama sheet, header tiap sheet (§3), kategori default, jadwal pengingat default (PRD §7.2–7.3).
   `AppError`, `ok(data)`, `fail(err)` → `ContentService` JSON.
   KT: konstanta header persis sama dengan design §3.
 
-- [ ] **T1.3 `db.js` — Repo generik** (design §4.4)
+- [x] **T1.3 `db.js` — Repo generik** (design §4.4)
   Termasuk memo per request, `insertMany` satu `setValues`, proteksi formula injection (design §7).
   KT: fungsi uji manual `__testRepo()` (hapus setelah lolos atau beri prefix `dev_`) bisa insert, baca, update, soft delete.
 
-- [ ] **T1.4 `setup.js` — `setup()` & `rotateToken()`** (design §4.2)
+- [x] **T1.4 `setup.js` — `setup()` & `rotateToken()`** (design §4.2)
   KT: dijalankan 2× berturut-turut tidak menduplikasi sheet/kategori; kolom tanggal berformat teks; token tercetak di log.
 
-- [ ] **T1.5 `auth.js`, `router.js`, `main.js`** (design §4.3)
+- [x] **T1.5 `auth.js`, `router.js`, `main.js`** (design §4.3)
   `doGet` health check; `doPost` parse → auth → route → lock untuk write → respons.
   Router berisi action `auth.check` dulu; action lain didaftarkan di fase 2.
   KT: body tidak valid → `BAD_REQUEST`; token salah → `UNAUTHORIZED`; action asing → `UNKNOWN_ACTION`;
@@ -78,30 +89,30 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 2 — Fitur Backend
 
-- [ ] **T2.1 `logic.js` + unit test** (design §4.5, §8)
+- [x] **T2.1 `logic.js` + unit test** (design §4.5, §8)
   Implementasi semua fungsi murni + `module.exports` kondisional. Tulis `backend/test/logic.test.js`.
   KT: `npm test` hijau; mencakup kasus batas untuk `computeReminderStatus` (tepat di batas km, tepat di batas hari,
   hanya km, hanya hari, belum ada data, SEGERA karena km, SEGERA karena hari) dan `aggregateMonthly` (bulan kosong = 0).
 
-- [ ] **T2.2 `validators.js`**
+- [x] **T2.2 `validators.js`**
   Validasi per entitas sesuai PRD §7.4 dan design §4.6. Kumpulkan semua error field sekaligus.
   KT: payload tidak valid menghasilkan `VALIDATION_ERROR` dengan `fields` berisi semua field yang salah.
 
-- [ ] **T2.3 `services/settings.js`** — `settings.get`, `settings.saveCategory`.
+- [x] **T2.3 `services/settings.js`** — `settings.get`, `settings.saveCategory`.
   KT: kategori baru muncul di `settings.get`; kode duplikat dengan data berbeda → update, bukan baris baru.
 
-- [ ] **T2.4 `services/motors.js`** — list, create (+ reminders default), update, delete, updateOdometer.
+- [x] **T2.4 `services/motors.js`** — list, create (+ reminders default), update, delete, updateOdometer.
   KT: motor baru otomatis punya 7 reminder default; `updateOdometer` lebih kecil → `ODOMETER_LOWER`; delete = soft delete.
 
-- [ ] **T2.5 `services/records.js`** — list (filter + paginasi), get, create, update, delete, places.
+- [x] **T2.5 `services/records.js`** — list (filter + paginasi), get, create, update, delete, places.
   Total dihitung server. Update motor `odometerCurrent` sesuai design §4.6.
   KT: total di sheet = Σ subtotal + jasa; `GANTI_OLI` tanpa item oli ditolak; `ODOMETER_LOWER` muncul dan bisa
   dilewati dengan `confirmOdometer`; delete ikut soft delete item; list urut `date` desc, `odometer` desc.
 
-- [ ] **T2.6 `services/reminders.js`** — list (dengan status, urutan sesuai design), upsert, delete.
+- [x] **T2.6 `services/reminders.js`** — list (dengan status, urutan sesuai design), upsert, delete.
   KT: kategori duplikat untuk motor yang sama → `DUPLICATE`; status cocok dengan hasil `logic.js`.
 
-- [ ] **T2.7 `services/dashboard.js` & `services/reports.js`**
+- [x] **T2.7 `services/dashboard.js` & `services/reports.js`**
   KT: `dashboard.get` sesuai bentuk data di design §4.6; `reports.monthly` mengembalikan tepat `months` entri;
   `reports.byCategory` memasukkan biaya jasa ke `JASA`.
 
@@ -114,23 +125,23 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 3 — Fondasi Frontend
 
-- [ ] **T3.1 `index.html` + `css/styles.css`**
+- [x] **T3.1 `index.html` + `css/styles.css`**
   CSP & meta (design §5.6), viewport, `<main id="app">`, header, bottom nav. Design tokens via CSS variables,
   dark mode, komponen dasar (button, card, input, badge status, segmented control, table, toast, modal).
   KT: tampil benar di lebar 360px dan 1280px; tidak ada error CSP di console.
 
-- [ ] **T3.2 Utilitas** — `utils/format.js` (Rupiah, tanggal Indonesia, km), `utils/dom.js` (`h()`, `escapeHtml`),
+- [x] **T3.2 Utilitas** — `utils/format.js` (Rupiah, tanggal Indonesia, km), `utils/dom.js` (`h()`, `escapeHtml`),
   `utils/validate.js`.
   KT: `formatRupiah(125000)` → `Rp 125.000`; `formatDate('2026-11-03')` → `3 Nov 2026`.
 
-- [ ] **T3.3 `api.js`, `state.js`, `config.js`** (design §5.3–5.4)
+- [x] **T3.3 `api.js`, `state.js`, `config.js`** (design §5.3–5.4)
   KT: timeout bekerja; `UNAUTHORIZED` mengarahkan ke login; error jaringan tampil sebagai toast yang ramah.
 
-- [ ] **T3.4 `router.js`, `ui/components.js`, `main.js`**
+- [x] **T3.4 `router.js`, `ui/components.js`, `main.js`**
   Hash router dengan parameter (`:id`) dan query; guard login & guard "belum ada motor"; loading state & empty state.
   KT: navigasi bolak-balik dan tombol back browser bekerja; refresh di route mana pun tetap di route itu.
 
-- [ ] **T3.5 `views/login.js`**
+- [x] **T3.5 `views/login.js`**
   Input token (type password + toggle lihat), bagian "Lanjutan" untuk API URL. Validasi via `auth.check`.
   KT: token salah → pesan error; token benar → ke dashboard.
 
@@ -138,27 +149,27 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 4 — Fitur Frontend
 
-- [ ] **T4.1 `views/motors.js`** — daftar, tambah/edit (modal/form), hapus (confirm), update odometer, pilih motor aktif.
+- [x] **T4.1 `views/motors.js`** — daftar, tambah/edit (modal/form), hapus (confirm), update odometer, pilih motor aktif.
   KT: US-01 s.d. US-04 terpenuhi.
 
-- [ ] **T4.2 `views/record-form.js`** — create & edit (design §5.5).
+- [x] **T4.2 `views/record-form.js`** — create & edit (design §5.5).
   KT: US-05 s.d. US-07, US-10; total live sama dengan total dari server; tidak bisa double submit;
   error validasi server tampil di bawah field terkait.
 
-- [ ] **T4.3 `views/records-list.js` & `views/record-detail.js`**
+- [x] **T4.3 `views/records-list.js` & `views/record-detail.js`**
   KT: US-08, US-09; filter bekerja; "Muat lagi" memakai `offset`; hapus mengembalikan ke daftar dengan toast.
 
-- [ ] **T4.4 `views/reminders.js`**
+- [x] **T4.4 `views/reminders.js`**
   KT: US-11 s.d. US-14; badge warna + teks status; edit interval langsung memperbarui status.
 
-- [ ] **T4.5 `views/dashboard.js`**
+- [x] **T4.5 `views/dashboard.js`**
   KT: US-15; tombol cepat "Ganti Oli" membuka form dengan `type=GANTI_OLI` dan baris `OLI_MESIN` terisi.
 
-- [ ] **T4.6 `views/reports.js`**
+- [x] **T4.6 `views/reports.js`**
   Bar chart CSS (tanpa library) untuk 12 bulan + tabel per kategori dengan pemilih tahun.
   KT: US-16; angka cocok dengan jumlah manual di spreadsheet.
 
-- [ ] **T4.7 `views/settings.js`**
+- [x] **T4.7 `views/settings.js`**
   Kelola kategori, info versi frontend & backend, tombol Keluar.
   KT: US-17, US-18.
 
@@ -188,14 +199,14 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 6 — Pengerasan
 
-- [ ] **T6.1 Audit keamanan**
+- [x] **T6.1 Audit keamanan**
   Cari di seluruh repo: token, `scriptId`, `refresh_token`, `access_token`. Pastikan tidak ada `innerHTML` dengan data
   pengguna tanpa escape. Pastikan log backend tidak memuat token/payload sensitif.
   KT: `git grep -nE "refresh_token|access_token|[A-Za-z0-9]{40,}" -- . ":!package-lock.json"` tidak menemukan
   secret (temuan selain secret, misalnya hash, boleh diabaikan dengan alasan tertulis),
   dan `git ls-files | Select-String "clasp.json$|clasprc"` hanya menampilkan `.clasp.json.example`.
 
-- [ ] **T6.2 Aksesibilitas & UX**
+- [x] **T6.2 Aksesibilitas & UX**
   Label semua input, fokus terlihat, urutan tab logis, tombol ≥ 44px, pesan error terbaca screen reader (`aria-live`).
   KT: Lighthouse Accessibility ≥ 90 di mode mobile.
 
@@ -208,7 +219,7 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 
 ## Fase 7 — Dokumentasi & QA Akhir
 
-- [ ] **T7.1 README lengkap (Bahasa Indonesia, untuk non-developer)**
+- [x] **T7.1 README lengkap (Bahasa Indonesia, untuk non-developer)**
   Prasyarat (Node LTS, akun Google & GitHub), langkah setup dari nol (gabungan T0.3, T1.6, T5.4) dengan perintah PowerShell,
   cara ganti token (`rotateToken()`), cara menambah kategori, troubleshooting (CORS/`Failed to fetch`, `UNAUTHORIZED`,
   clasp token kedaluwarsa, lupa update deployment).

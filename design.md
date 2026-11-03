@@ -472,9 +472,9 @@ Cache di memori (per sesi): `motors`, `categories`. Invalidasi setelah write ter
   "name": "motocare",
   "private": true,
   "scripts": {
-    "test": "node --test backend/test/",
-    "push": "cd backend && clasp push",
-    "serve": "npx --yes serve frontend -l 5173"
+    "test": "node --test \"backend/test/**/*.test.js\"",
+    "push": "cd backend && clasp push --force",
+    "dev:mock": "node scripts/mock-server.js"
   },
   "devDependencies": { "@google/clasp": "<versi terbaru>" }
 }
@@ -506,3 +506,16 @@ backend/.clasp.json
 
 ## 9. Catatan Perubahan
 > Agent: tambahkan entri di sini jika menyimpang dari desain. Format: `YYYY-MM-DD — apa — kenapa`.
+
+- 2026-11-03 — Script `test` memakai glob `"backend/test/**/*.test.js"` — Node 22+ tidak menerima path folder untuk `node --test`.
+- 2026-11-03 — Tambah `backend/src/util.js` (`nowISO_`, `todayISO_`, `newId_`) — helper yang butuh layanan Apps Script dipisah dari `logic.js` agar `logic.js` tetap murni.
+- 2026-11-03 — Tambah `backend/src/dev.js` (`dev_seedDummy`, `dev_benchmark`) — untuk task T6.3; tidak terdaftar di router sehingga tidak bisa dipanggil lewat API.
+- 2026-11-03 — Tambah `backend/test/gas-mock.js` + `api.test.js` — mock minimal SpreadsheetApp/PropertiesService/dll. agar seluruh API bisa diuji di Node dan CI tanpa akun Google.
+- 2026-11-03 — Tambah `scripts/mock-server.js` (`npm run dev:mock`, kode akses `demo`) — mencoba frontend lokal tanpa Google; CSP `connect-src` dilonggarkan hanya di server ini.
+- 2026-11-03 — Status pengingat tambahan `NONAKTIF` untuk aturan dengan `active = FALSE` — diurutkan paling akhir, tidak ditampilkan di dashboard.
+- 2026-11-03 — Respons tambahan: `RecordSummary.itemNames` (maks 5 nama item), `dashboard.get` menambah `recordCount` dan `today`, `ReminderWithStatus` menambah `label` dan `lastRecordId` — dibutuhkan UI.
+- 2026-11-03 — Konfirmasi `ODOMETER_LOWER` ditangani di `views/record-form.js`, bukan `api.js` — konfirmasi butuh konteks form untuk mengirim ulang payload.
+- 2026-11-03 — Tambah route `#/more` (menu Motor/Laporan/Pengaturan di mobile) dan `frontend/js/version.js` (`APP_VERSION` frontend) — `config.js` ditimpa CI sehingga versi tidak boleh disimpan di sana.
+- 2026-11-03 — `motors.update` menerima `odometerCurrent` opsional — jalur koreksi odometer sesuai §4.6.
+- 2026-11-03 — clasp 3.x: perintah `create-script`, `push --force`, `update-deployment <id>` (pengganti `deploy -i`). Versi action: checkout@v7, setup-node@v7, configure-pages@v6, upload-pages-artifact@v5, deploy-pages@v5.
+- 2026-11-03 — Warna primer mode terang diubah ke `#c2410c` — `#d9480f` gagal kontras WCAG AA (axe-core).
