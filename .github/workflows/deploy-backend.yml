@@ -33,7 +33,9 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Siapkan kredensial clasp
+      # Deploy otomatis bersifat opsional: tanpa secret, workflow cukup menjalankan test lalu berhenti dengan sukses.
+      - name: Cek secret deploy
+        id: secrets
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
           CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
@@ -44,18 +46,29 @@ jobs:
           [ -z "$CLASP_SCRIPT_ID" ] && missing="$missing CLASP_SCRIPT_ID"
           [ -z "$GAS_DEPLOYMENT_ID" ] && missing="$missing GAS_DEPLOYMENT_ID"
           if [ -n "$missing" ]; then
-            echo "::error::Secret belum diisi:$missing (Settings → Secrets and variables → Actions)"
-            exit 1
+            echo "::notice::Deploy otomatis ke Apps Script dilewati. Secret belum diisi:$missing (Settings → Secrets and variables → Actions). Deploy manual: cd backend; npx clasp push --force"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Siapkan kredensial clasp
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_SCRIPT_ID: ${{ secrets.CLASP_SCRIPT_ID }}
+        run: |
           umask 077
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           node -e 'require("fs").writeFileSync("backend/.clasp.json", JSON.stringify({ scriptId: process.env.CLASP_SCRIPT_ID, rootDir: "." }))'
 
       - name: clasp push
+        if: steps.secrets.outputs.ready == 'true'
         working-directory: backend
         run: ../node_modules/.bin/clasp push --force
 
       - name: Perbarui deployment web app (URL /exec tetap)
+        if: steps.secrets.outputs.ready == 'true'
         working-directory: backend
         env:
           GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
