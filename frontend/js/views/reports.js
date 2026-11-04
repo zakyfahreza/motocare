@@ -1,5 +1,5 @@
 import { h, uid } from '../utils/dom.js';
-import { call } from '../api.js';
+import { call, read } from '../api.js';
 import { formatRupiah, formatNumber, formatMonthShort, formatDate, currentYear, todayISO, TYPE_LABELS } from '../utils/format.js';
 import { pageHead, busy, toast, toastError, downloadFile, radioGroup } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
@@ -8,11 +8,13 @@ import { categoryLabel } from '../state.js';
 import { navigate, buildHash } from '../router.js';
 
 const MONTH_LONG = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-const BAR_CLASS = { SERVIS: 't-servis', GANTI_OLI: 't-oli', BELANJA_PART: 't-part' };
+const BAR_CLASS = { SERVIS: 't-servis', GANTI_OLI: 't-oli', BELANJA_PART: 't-part', BENSIN: 't-bensin', BAN: 't-ban' };
 const GROUP_META = {
   JASA: { iconName: 'build', tone: '', color: 'var(--primary)', badge: 'badge-primary' },
+  FUEL: { iconName: 'local_gas_station', tone: 'tone-soon', color: '#f59e0b', badge: 'badge-soon' },
+  TIRE: { iconName: 'tire_repair', tone: 'tone-ok', color: '#10b981', badge: 'badge-ok' },
   FLUID: { iconName: 'water_drop', tone: 'tone-sky', color: 'var(--sky)', badge: 'badge-sky' },
-  PART: { iconName: 'settings', tone: 'tone-soon', color: '#fbbf24', badge: 'badge-soon' },
+  PART: { iconName: 'settings', tone: 'tone-violet', color: '#a5b4fc', badge: '' },
 };
 
 function compact(n) {
@@ -28,8 +30,8 @@ export async function render({ motor, query, mount }) {
   const mode = query.get('mode') === 'monthly' ? 'monthly' : 'yearly';
 
   const [s, rolling] = await Promise.all([
-    call('reports.summary', { motorId: motor.id, year }),
-    mode === 'monthly' ? call('reports.monthly', { motorId: motor.id, months: 12 }) : Promise.resolve(null),
+    read('reports.summary', { motorId: motor.id, year }),
+    mode === 'monthly' ? read('reports.monthly', { motorId: motor.id, months: 12 }) : Promise.resolve(null),
   ]);
 
   // ---------- Kontrol ----------
@@ -121,6 +123,8 @@ export async function render({ motor, query, mount }) {
         h('span', null, h('i', { style: { background: 'var(--primary)' } }), 'Servis'),
         h('span', null, h('i', { style: { background: 'var(--sky)' } }), 'Ganti oli'),
         h('span', null, h('i', { style: { background: '#a5b4fc' } }), 'Belanja part'),
+        h('span', null, h('i', { style: { background: '#f59e0b' } }), 'Bensin'),
+        h('span', null, h('i', { style: { background: '#10b981' } }), 'Ban'),
         h('span', null, h('i', { style: { background: 'var(--surface-high)' } }), 'Tanpa biaya'),
       )
       : null,
@@ -182,6 +186,21 @@ export async function render({ motor, query, mount }) {
       ],
   );
 
+  // ---------- Bensin ----------
+  const fu = s.fuel || { fills: 0 };
+  const fuelCard = fu.fills ? h('section', { class: 'card card-pad', 'aria-labelledby': 'fuel-h' },
+    h('div', { class: 'row-between' },
+      h('h2', { class: 'row gap-8 t-h3', id: 'fuel-h' }, h('span', { class: 'c-soon' }, icon('local_gas_station', 22)), `Bensin ${year}`),
+      h('span', { class: 'badge badge-soon' }, `${fu.fills}× isi`),
+    ),
+    h('div', { class: 'mini-stats mt-12' },
+      h('div', { class: 'card-tint mini-stat' }, h('span', { class: 't-sm c-2' }, 'Total liter'), h('strong', null, `${formatNumber(fu.liters)} L`)),
+      h('div', { class: 'card-tint mini-stat' }, h('span', { class: 't-sm c-2' }, 'Biaya'), h('strong', null, compact(fu.spend))),
+      h('div', { class: 'card-tint mini-stat' }, h('span', { class: 't-sm c-2' }, 'Rata-rata'), h('strong', null, fu.avgKmPerL ? `${formatNumber(fu.avgKmPerL)} km/L` : '—')),
+    ),
+    !fu.avgKmPerL ? h('p', { class: 't-sm c-2 mt-8' }, 'Konsumsi km/L dihitung dari dua kali isi penuh (full tank) berturut-turut.') : null,
+  ) : null;
+
   // ---------- Riwayat terakhir ----------
   const recentCard = h('section', { class: 'card card-pad', 'aria-labelledby': 'rec-h' },
     h('div', { class: 'row-between' },
@@ -211,6 +230,7 @@ export async function render({ motor, query, mount }) {
     miniStats,
     chartCard,
     catCard,
+    fuelCard,
     cpkCard,
     recentCard,
     h('p', { class: 't-sm c-3', style: { textAlign: 'center' } }, `Data per ${formatDate(todayISO())}`),

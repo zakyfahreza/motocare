@@ -1,21 +1,19 @@
 import { h } from '../utils/dom.js';
-import { call } from '../api.js';
+import { call, read } from '../api.js';
 import { formatNumber, formatRupiah, formatDate, formatTimestamp, describeReminder, TYPE_LABELS, todayISO } from '../utils/format.js';
 import { statusBadge, typeBadge, toast, toastError, sectionHead, numberInput, readNumber, busy } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { categoryIcon, STATUS_TONES, TYPE_ICONS, TYPE_TONES, TRANSMISSION_LABELS } from '../ui/meta.js';
+import { categoryIcon, STATUS_TONES, TYPE_ICONS, TYPE_TONES, TRANSMISSION_LABELS, recordTitle } from '../ui/meta.js';
+import { parseDetails } from '../utils/format.js';
 import { invalidateMotors } from '../state.js';
-import { loadPhotos } from '../photos.js';
+import { loadPhotos, cachedPhoto } from '../photos.js';
 
 const MAX_REMINDERS = 6;
 
 export async function render({ motor, mount, refresh }) {
-  const [data, photos] = await Promise.all([
-    call('dashboard.get', { motorId: motor.id }),
-    loadPhotos([motor]).catch(() => ({})),
-  ]);
+  const data = await read('dashboard.get', { motorId: motor.id });
   const m = data.motor;
-  const photoUrl = photos[m.id];
+  const photoUrl = cachedPhoto(m);
 
   // ---------- Hero motor + odometer ----------
   const odoInput = numberInput({ value: m.odometerCurrent, placeholder: 'Masukkan km' });
@@ -55,6 +53,16 @@ export async function render({ motor, mount, refresh }) {
   saveBtn.addEventListener('click', saveOdo);
   odoPanel.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); saveOdo(); });
 
+  const heroTile = h('a', { class: ['tile-icon lg', photoUrl && 'has-photo'], href: '#/motors', 'aria-label': 'Buka garasi' },
+    photoUrl ? h('img', { class: 'photo', src: photoUrl, alt: '' }) : icon('two_wheeler', 26));
+  if (!photoUrl && m.photoFileId) {
+    loadPhotos([m]).then((p) => {
+      if (!p[m.id]) return;
+      heroTile.classList.add('has-photo');
+      heroTile.replaceChildren(h('img', { class: 'photo', src: p[m.id], alt: '' }));
+    }).catch(() => {});
+  }
+
   const late = data.reminders.filter((r) => r.status === 'TERLAMBAT').length;
   const soon = data.reminders.filter((r) => r.status === 'SEGERA').length;
   const condition = late ? { text: 'Perlu servis', cls: 'c-late' } : soon ? { text: 'Servis segera', cls: 'c-soon' } : { text: 'Kondisi aktif', cls: 'c-ok' };
@@ -67,8 +75,7 @@ export async function render({ motor, mount, refresh }) {
         h('h2', { class: 't-h2 mt-4', id: 'hero-name' }, m.name),
         subtitle && h('span', { class: 't-sm c-2' }, subtitle),
       ),
-      h('a', { class: ['tile-icon lg', photoUrl && 'has-photo'], href: '#/motors', 'aria-label': 'Buka garasi' },
-        photoUrl ? h('img', { class: 'photo', src: photoUrl, alt: '' }) : icon('two_wheeler', 26)),
+      heroTile,
     ),
     h('div', { class: 'hero-odo' },
       h('div', { class: 'stack' },
@@ -87,10 +94,11 @@ export async function render({ motor, mount, refresh }) {
   // ---------- Aksi cepat ----------
   const quickItem = (href, iconName, tone, title, sub) =>
     h('a', { class: 'card', href }, h('span', { class: ['tile-icon', tone] }, icon(iconName, 24)), h('span', { class: 't-label' }, title), h('span', { class: 't-sm c-2' }, sub));
-  const quick = h('nav', { class: 'quick', 'aria-label': 'Aksi cepat' },
+  const quick = h('nav', { class: 'quick quick-4', 'aria-label': 'Aksi cepat' },
     quickItem('#/records/new?type=GANTI_OLI', 'oil_barrel', '', 'Ganti Oli', 'Catat baru'),
     quickItem('#/records/new?type=SERVIS', 'build', 'tone-violet', 'Servis', 'Bengkel'),
-    quickItem('#/records/new?type=BELANJA_PART', 'shopping_cart', 'tone-sky', 'Belanja Part', 'Komponen'),
+    quickItem('#/records/new?type=BENSIN', 'local_gas_station', 'tone-soon', 'Bensin', 'Isi BBM'),
+    quickItem('#/records/new?type=BAN', 'tire_repair', 'tone-ok', 'Ban', 'Ganti/tambal'),
   );
 
   // ---------- Pengingat ----------
@@ -138,7 +146,7 @@ export async function render({ motor, mount, refresh }) {
           h('span', { class: ['tile-icon', TYPE_TONES[last.type]] }, icon(TYPE_ICONS[last.type] || 'receipt_long', 20)),
           h('div', { class: 'stack' },
             h('div', { class: 'row gap-8', style: { flexWrap: 'wrap' } }, typeBadge(last.type), h('span', { class: 't-sm c-2' }, formatDate(last.date))),
-            h('span', { class: 't-title mt-4' }, (last.itemNames && last.itemNames.length ? last.itemNames.join(', ') : last.place) || TYPE_LABELS[last.type]),
+            h('span', { class: 't-title mt-4' }, recordTitle(last, parseDetails(last.details)) || last.place || TYPE_LABELS[last.type]),
           ),
         ),
         h('span', { class: 't-title c-primary num', style: { fontWeight: '800' } }, formatRupiah(last.grandTotal)),

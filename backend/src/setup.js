@@ -29,7 +29,14 @@ function setup() {
     tokenCreated = true;
   }
 
+  // v0.4: folder foto di Google Drive (memicu permintaan izin Drive saat pertama kali) + migrasi foto lama.
+  DriveStore.folder_('motor');
+  DriveStore.folder_('record');
+  var moved = PhotoService.migrateLegacy();
+
   Logger.log('Spreadsheet: ' + ss.getUrl());
+  Logger.log('Folder foto Google Drive: ' + DriveStore.folderUrl());
+  if (moved) Logger.log(moved + ' foto motor lama dipindahkan dari spreadsheet ke Google Drive.');
   if (tokenCreated) {
     Logger.log('API_TOKEN baru (salin dan simpan, ini kode akses aplikasi): ' + props.getProperty('API_TOKEN'));
   } else {

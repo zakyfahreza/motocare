@@ -6,7 +6,7 @@ import { icon } from '../ui/icons.js';
 import { initials } from '../ui/meta.js';
 import { getActiveMotor, loadSettings } from '../state.js';
 import { APP_VERSION } from '../version.js';
-import { loadPhotos } from '../photos.js';
+import { loadPhotos, cachedPhoto } from '../photos.js';
 
 const BACKUP_KEY = 'motocare_last_backup';
 
@@ -24,10 +24,11 @@ export function lastBackupText() {
   return `Terakhir dicadangkan ${formatTimestamp(iso)}`;
 }
 
-export async function render({ mount }) {
+export async function render({ mount, refresh, isCurrent }) {
   const motor = getActiveMotor();
-  const [, photos] = await Promise.all([loadSettings(), loadPhotos([motor]).catch(() => ({}))]);
-  const photoUrl = motor ? photos[motor.id] : null;
+  await loadSettings();
+  const photoUrl = cachedPhoto(motor);
+  if (!photoUrl && motor && motor.photoFileId) loadPhotos([motor]).then((p) => { if (p[motor.id] && isCurrent()) refresh(); }).catch(() => {});
 
   const menuRow = (href, iconName, title, sub) => h('a', { class: 'list-row', href },
     h('span', { class: 'tile-icon lg round' }, icon(iconName, 24)),

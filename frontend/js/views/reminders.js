@@ -1,5 +1,5 @@
 import { h } from '../utils/dom.js';
-import { call } from '../api.js';
+import { call, read } from '../api.js';
 import { formatNumber, formatDate, describeReminder } from '../utils/format.js';
 import { validateReminder } from '../utils/validate.js';
 import {
@@ -28,7 +28,7 @@ function usage(r) {
 
 export async function render({ motor, mount, refresh }) {
   const [list, categories] = await Promise.all([
-    call('reminders.list', { motorId: motor.id }),
+    read('reminders.list', { motorId: motor.id }),
     loadCategories(),
   ]);
 

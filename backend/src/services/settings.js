@@ -1,6 +1,6 @@
 var SettingsService = {
   get: function () {
-    return { version: APP_VERSION, categories: SettingsService.listCategories() };
+    return { version: APP_VERSION, categories: SettingsService.listCategories(), photoFolderUrl: DriveStore.folderUrl() };
   },
 
   listCategories: function () {
@@ -13,7 +13,7 @@ var SettingsService = {
   categoryLabels: function () {
     var map = {};
     Db.all(SHEETS.CATEGORIES).forEach(function (c) { map[c.code] = c.label; });
-    map[SERVICE_FEE_CATEGORY] = SERVICE_FEE_LABEL;
+    Object.keys(SYSTEM_CATEGORY_LABELS).forEach(function (k) { map[k] = SYSTEM_CATEGORY_LABELS[k]; });
     return map;
   },
 
@@ -34,7 +34,7 @@ var SettingsService = {
       .string('label', { required: true, max: 50 })
       .int('sortOrder', { min: 0, max: 100000, defaultValue: null })
       .bool('active', { defaultValue: true });
-    if (payload && payload.code === SERVICE_FEE_CATEGORY) v.addError('code', 'Kode JASA dipakai sistem');
+    if (payload && SYSTEM_CATEGORY_LABELS.hasOwnProperty(payload.code)) v.addError('code', 'Kode ' + payload.code + ' dipakai sistem');
     var data = v.done();
 
     var existing = Db.findById(SHEETS.CATEGORIES, data.code);

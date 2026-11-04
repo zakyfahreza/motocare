@@ -79,8 +79,51 @@ class FakeSpreadsheet {
   deleteSheet(s) { this.sheets = this.sheets.filter((x) => x !== s); }
 }
 
+class FakeBlob {
+  constructor(bytes, mime, name) { this.bytes = bytes; this.mime = mime; this.name = name; }
+  getBytes() { return this.bytes; }
+  getContentType() { return this.mime; }
+  getName() { return this.name; }
+}
+
+/** Google Drive palsu (di memori): folder & file dengan status trashed. */
+function createFakeDrive() {
+  const items = new Map();
+  const reads = { count: 0 };
+  const mk = (kind, name, parent, blob) => {
+    const id = (kind === 'folder' ? 'fld-' : 'fil-') + crypto.randomUUID();
+    const item = {
+      id, kind, name, parent, blob, trashed: false,
+      getId: () => id,
+      getName: () => name,
+      isTrashed: () => item.trashed,
+      setTrashed: (v) => { item.trashed = v; return item; },
+      getBlob: () => { reads.count += 1; return blob; },
+      createFolder: (n) => mk('folder', n, id),
+      createFile: (b) => mk('file', b.getName(), id, b),
+    };
+    items.set(id, item);
+    return item;
+  };
+  const get = (id, kind) => {
+    const it = items.get(id);
+    if (!it || it.kind !== kind) throw new Error('No item with the given ID could be found, or you do not have permission to access it.');
+    return it;
+  };
+  return {
+    items,
+    reads,
+    api: {
+      createFolder: (n) => mk('folder', n, null),
+      getFolderById: (id) => get(id, 'folder'),
+      getFileById: (id) => get(id, 'file'),
+    },
+  };
+}
+
 function createGasContext({ today } = {}) {
   const spreadsheets = {};
+  const drive = createFakeDrive();
   const props = {};
   const logs = [];
   const fixedNow = today ? new Date(today + 'T05:00:00Z') : null;
@@ -112,10 +155,17 @@ function createGasContext({ today } = {}) {
     Utilities: {
       getUuid: () => crypto.randomUUID(),
       formatDate(date, tz, fmt) {
-        if (fmt !== 'yyyy-MM-dd') throw new Error('format tidak didukung mock: ' + fmt);
-        return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+        const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+          .formatToParts(date).map((x) => [x.type, x.value]));
+        if (fmt === 'yyyy-MM-dd') return `${p.year}-${p.month}-${p.day}`;
+        if (fmt === 'yyyyMMdd-HHmmss') return `${p.year}${p.month}${p.day}-${p.hour}${p.minute}${p.second}`;
+        throw new Error('format tidak didukung mock: ' + fmt);
       },
+      base64Decode: (s) => Array.from(Buffer.from(s, 'base64')),
+      base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
+      newBlob: (bytes, mime, name) => new FakeBlob(bytes, mime, name),
     },
+    DriveApp: drive.api,
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     ContentService: {
       MimeType: { JSON: 'application/json' },
@@ -151,7 +201,7 @@ function createGasContext({ today } = {}) {
     return spreadsheets[props.SPREADSHEET_ID];
   }
 
-  return { ctx, props, logs, call, raw, spreadsheet };
+  return { ctx, props, logs, call, raw, spreadsheet, drive };
 }
 
 module.exports = { createGasContext };

@@ -3,7 +3,7 @@
  * Catatan: semua file di backend/src berbagi satu scope global Apps Script.
  */
 
-var APP_VERSION = '0.3.0';
+var APP_VERSION = '0.4.0';
 var TIMEZONE = 'Asia/Jakarta';
 
 var SHEETS = {
@@ -17,12 +17,20 @@ var SHEETS = {
 };
 
 /**
- * Foto motor disimpan sebagai data URL (JPEG terkompresi dari HP) dipecah ke beberapa sel,
- * karena satu sel Google Sheets maksimal 50.000 karakter. Tidak butuh izin Google Drive.
+ * v0.3 (lama): foto motor disimpan di sheet motor_photos, dipecah per sel.
+ * v0.4: foto disimpan sebagai file di Google Drive (folder "MotoCare Foto").
+ * Konstanta lama dipertahankan untuk migrasi (setup() memindahkan foto lama ke Drive).
  */
 var PHOTO_CHUNK = 40000;
 var PHOTO_PARTS = 6;
 var PHOTO_MAX_CHARS = PHOTO_CHUNK * PHOTO_PARTS;
+
+/** Foto di Google Drive. */
+var DRIVE_ROOT_FOLDER = 'MotoCare Foto';
+var DRIVE_SUBFOLDERS = { motor: 'Foto Motor', record: 'Nota & Part' };
+var PHOTO_UPLOAD_MAX_CHARS = 1500000; // ±1,1 MB per foto setelah dikompres di perangkat
+var MAX_RECORD_PHOTOS = 2;
+var MAX_PHOTOS_PER_FETCH = 10;
 
 /**
  * Skema tiap sheet. Urutan key = urutan kolom saat setup().
@@ -51,8 +59,10 @@ var SCHEMA = {
     tireFront: 'string',
     tireRear: 'string',
     oilType: 'string',
-    // v0.3: penanda versi foto (kosong = tanpa foto). Datanya di sheet motor_photos.
+    // v0.3: penanda versi foto (kosong = tanpa foto).
     photoUpdatedAt: 'string',
+    // v0.4: ID file foto di Google Drive.
+    photoFileId: 'string',
   },
   records: {
     id: 'string',
@@ -68,6 +78,10 @@ var SCHEMA = {
     createdAt: 'string',
     updatedAt: 'string',
     deleted: 'bool',
+    // v0.4
+    tags: 'string',     // kode jenis servis, dipisah koma (SERVIS_RUTIN,GANTI_OLI_MESIN,...)
+    details: 'string',  // JSON rincian khusus Bensin / Ban
+    photoIds: 'string', // ID file Google Drive foto nota/part, dipisah koma
   },
   record_items: {
     id: 'string',
@@ -126,7 +140,19 @@ var PRIMARY_KEYS = {
   motor_photos: 'motorId',
 };
 
-var RECORD_TYPES = ['SERVIS', 'GANTI_OLI', 'BELANJA_PART'];
+var RECORD_TYPES = ['SERVIS', 'GANTI_OLI', 'BELANJA_PART', 'BENSIN', 'BAN'];
+/** Tipe yang memakai form "Servis" (item part/oli bebas). */
+var SERVICE_TYPES = ['SERVIS', 'GANTI_OLI', 'BELANJA_PART'];
+var SERVICE_TAGS = ['SERVIS_RUTIN', 'GANTI_OLI_MESIN', 'GANTI_OLI_GARDAN', 'SERVIS_CVT', 'TUNE_UP', 'BELI_PART'];
+
+/** Kategori sistem (tidak ada di sheet categories, tidak muncul di pilihan item). */
+var FUEL_CATEGORY = 'BBM';
+var SYSTEM_CATEGORY_LABELS = { JASA: 'Jasa Servis', BBM: 'Bahan Bakar (BBM)' };
+var TIRE_CATEGORIES = ['BAN_DEPAN', 'BAN_BELAKANG'];
+var TIRE_ACTIONS = ['GANTI', 'ANGIN', 'TAMBAL', 'BALIR'];
+var TIRE_POSITIONS = ['DEPAN', 'BELAKANG', 'SEPASANG'];
+var TIRE_CONSTRUCTIONS = ['TL', 'TT'];
+var TIRE_GASES = ['N2', 'ANGIN'];
 var TRANSMISSIONS = ['MATIK', 'MANUAL', 'KOPLING', 'LISTRIK'];
 /** Kelompok laporan: kategori oli & cairan. Biaya jasa = JASA. Sisanya = suku cadang. */
 var FLUID_CATEGORIES = ['OLI_MESIN', 'OLI_GARDAN', 'MINYAK_REM', 'AIR_RADIATOR'];

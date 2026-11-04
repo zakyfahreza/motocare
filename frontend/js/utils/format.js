@@ -6,7 +6,20 @@ export const TYPE_LABELS = {
   SERVIS: 'Servis',
   GANTI_OLI: 'Ganti Oli',
   BELANJA_PART: 'Belanja Part',
+  BENSIN: 'Bensin',
+  BAN: 'Ban',
 };
+
+/** Rincian JSON catatan Bensin/Ban. */
+export function parseDetails(s) {
+  if (!s) return {};
+  if (typeof s === 'object') return s;
+  try { return JSON.parse(s) || {}; } catch { return {}; }
+}
+
+export function formatLiters(n) {
+  return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(Number(n) || 0)} L`;
+}
 
 export const STATUS_LABELS = {
   OK: 'OK',

@@ -6,9 +6,10 @@ import { loadSettings, getApiUrl, signOut, resetCache, getActiveMotor } from '..
 import { getTheme, setTheme } from '../theme.js';
 import { navigate } from '../router.js';
 import { exportBackup, lastBackupText } from './more.js';
+import { clearPhotoCache } from '../photos.js';
 
 export async function render({ mount, refresh }) {
-  const { categories, version } = await loadSettings();
+  const { categories, version, photoFolderUrl } = await loadSettings();
   const motor = getActiveMotor();
 
   const apiUrl = getApiUrl();
@@ -80,6 +81,12 @@ export async function render({ mount, refresh }) {
         },
       }),
       row({ iconName: 'description', title: 'Ekspor riwayat (CSV)', sub: 'Buka di Excel atau Google Sheets', href: '#/records' }),
+      photoFolderUrl
+        ? h('a', { class: 'setting-row', href: photoFolderUrl, target: '_blank', rel: 'noopener noreferrer' },
+          h('span', { class: 'tile-icon sm' }, icon('folder_open', 20)),
+          h('span', { class: 'stack grow' }, h('span', { class: 't-title' }, 'Folder foto Google Drive'), h('span', { class: 't-sm c-2' }, 'Foto motor, nota, dan struk tersimpan di "MotoCare Foto"')),
+          h('span', { class: 'c-3' }, icon('open_in_new', 20)))
+        : row({ iconName: 'folder_open', title: 'Folder foto Google Drive', sub: 'Dibuat otomatis saat foto pertama disimpan', right: null }),
       row({ iconName: 'cleaning_services', title: 'Muat ulang data', sub: 'Hapus cache di perangkat ini lalu ambil data terbaru', onClick: () => { resetCache(); toast('Cache dibersihkan', 'success'); refresh(); } }),
     ),
     group('Info aplikasi & bantuan',
@@ -92,6 +99,7 @@ export async function render({ mount, refresh }) {
       onclick: async () => {
         if (!(await confirmDialog('Keluar dari perangkat ini? Kode akses akan dihapus dari perangkat.', { title: 'Keluar', okText: 'Keluar', danger: true }))) return;
         signOut();
+        await clearPhotoCache();
         navigate('/login', { replace: true });
       },
     }, icon('logout', 20), 'Keluar dari perangkat'),

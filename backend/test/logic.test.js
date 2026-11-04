@@ -167,3 +167,20 @@ test('sumByDatePrefix', () => {
   assert.equal(L.sumByDatePrefix(rs, '2026-11'), 10);
   assert.equal(L.sumByDatePrefix(rs, '2026'), 15);
 });
+
+test('fuelEconomy: full-to-full, isi sebagian dijumlahkan, sebelum isi penuh pertama diabaikan', () => {
+  const fills = [
+    { id: 'a', odometer: 100, liters: 3, fullTank: false },
+    { id: 'b', odometer: 200, liters: 4, fullTank: true },
+    { id: 'c', odometer: 300, liters: 1.5, fullTank: false },
+    { id: 'd', odometer: 400, liters: 3.5, fullTank: true },
+    { id: 'e', odometer: 450, liters: 2, fullTank: true },
+  ];
+  const eco = L.fuelEconomy(fills.slice().reverse());
+  assert.deepEqual(Object.keys(eco).sort(), ['d', 'e']);
+  assert.deepEqual(eco.d, { distance: 200, liters: 5, kmPerL: 40 });
+  assert.deepEqual(eco.e, { distance: 50, liters: 2, kmPerL: 25 });
+  assert.equal(L.averageEconomy(eco), Math.round((250 / 7) * 10) / 10);
+  assert.equal(L.averageEconomy(eco, { d: true }), 40);
+  assert.equal(L.averageEconomy({}), null);
+});

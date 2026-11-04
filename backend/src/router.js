@@ -17,7 +17,9 @@ function getRoutes_() {
     'motors.overview': { handler: MotorService.overview },
     'motors.setPhoto': { write: true, handler: PhotoService.set },
     'motors.removePhoto': { write: true, handler: PhotoService.remove },
-    'motors.getPhotos': { handler: PhotoService.get },
+    'photos.get': { handler: PhotoService.get },
+    'records.fuelHistory': { handler: RecordService.fuelHistory },
+    'batch': { handler: runBatch_ },
     'records.export': { handler: RecordService.exportRows },
     'reports.summary': { handler: ReportService.summary },
     'backup.export': { handler: BackupService.exportAll },
@@ -38,4 +40,33 @@ function getRoutes_() {
     'reports.monthly': { handler: ReportService.monthly },
     'reports.byCategory': { handler: ReportService.byCategory },
   };
+}
+
+var BATCH_MAX = 12;
+
+/**
+ * Jalankan beberapa action BACA dalam satu request agar aplikasi lebih cepat
+ * (satu kali bolak-balik ke Apps Script, sheet dibaca sekali lalu dipakai bersama).
+ * payload: { calls: [{ action, payload }] } → [{ ok, data } | { ok: false, error }]
+ */
+function runBatch_(payload) {
+  var calls = payload && payload.calls;
+  if (!Array.isArray(calls) || !calls.length) throw new AppError('BAD_REQUEST', 'Field "calls" wajib berupa daftar.');
+  if (calls.length > BATCH_MAX) throw new AppError('BAD_REQUEST', 'Maksimal ' + BATCH_MAX + ' action per batch.');
+  var routes = getRoutes_();
+  return calls.map(function (c) {
+    try {
+      var action = c && c.action;
+      var route = routes.hasOwnProperty(action) ? routes[action] : null;
+      if (!route || action === 'batch') throw new AppError('UNKNOWN_ACTION', 'Action tidak dikenal: ' + action);
+      if (route.write) throw new AppError('BAD_REQUEST', 'Action tulis tidak boleh di dalam batch: ' + action);
+      var p = c.payload;
+      if (p !== undefined && (typeof p !== 'object' || p === null || Array.isArray(p))) throw new AppError('BAD_REQUEST', 'payload harus objek');
+      return { ok: true, data: route.handler(p || {}) };
+    } catch (err) {
+      if (err instanceof AppError) return { ok: false, error: { code: err.code, message: err.message, fields: err.fields || undefined } };
+      console.error('BATCH INTERNAL_ERROR: ' + (err && err.stack ? err.stack : err));
+      return { ok: false, error: { code: 'INTERNAL_ERROR', message: 'Terjadi kesalahan di server.' } };
+    }
+  });
 }

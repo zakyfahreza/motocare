@@ -197,6 +197,51 @@ var Logic = (function () {
    * - groups: Servis & Jasa (biaya jasa), Oli & Cairan (fluidCategories), Suku Cadang (kategori lain)
    * - average: total / jumlah bulan berjalan (tahun ini) atau 12 (tahun lalu)
    */
+  /**
+   * Konsumsi BBM metode full-to-full.
+   * fills: [{ id, odometer, liters, fullTank }] (urutan bebas).
+   * Untuk setiap isi penuh yang punya isi penuh sebelumnya:
+   *   jarak = odo sekarang − odo isi penuh sebelumnya; liter = total liter sejak isi penuh sebelumnya (termasuk sekarang).
+   * Mengembalikan { [id]: { distance, liters, kmPerL } }.
+   */
+  function fuelEconomy(fills) {
+    var sorted = (fills || []).slice().sort(function (a, b) {
+      return a.odometer - b.odometer || String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+    var out = {};
+    var lastFullOdo = null;
+    var acc = 0;
+    sorted.forEach(function (f) {
+      var liters = Number(f.liters) || 0;
+      if (lastFullOdo === null) {
+        if (f.fullTank) { lastFullOdo = f.odometer; acc = 0; }
+        return;
+      }
+      acc += liters;
+      if (f.fullTank) {
+        var distance = f.odometer - lastFullOdo;
+        if (distance > 0 && acc > 0) {
+          out[f.id] = { distance: distance, liters: Math.round(acc * 100) / 100, kmPerL: Math.round((distance / acc) * 10) / 10 };
+        }
+        lastFullOdo = f.odometer;
+        acc = 0;
+      }
+    });
+    return out;
+  }
+
+  /** Rata-rata km/L berbobot (total jarak / total liter) dari hasil fuelEconomy, atau null. */
+  function averageEconomy(economyMap, ids) {
+    var dist = 0;
+    var lit = 0;
+    Object.keys(economyMap || {}).forEach(function (id) {
+      if (ids && !ids[id]) return;
+      dist += economyMap[id].distance;
+      lit += economyMap[id].liters;
+    });
+    return lit > 0 ? Math.round((dist / lit) * 10) / 10 : null;
+  }
+
   function summarizeYear(records, items, year, todayISO, fluidCategories) {
     var y = String(year);
     var active = (records || []).filter(function (r) { return !r.deleted && String(r.date).indexOf(y + '-') === 0; });
@@ -206,7 +251,7 @@ var Logic = (function () {
 
     var months = [];
     for (var m = 1; m <= 12; m++) {
-      months.push({ month: y + '-' + (m < 10 ? '0' + m : String(m)), total: 0, byType: { SERVIS: 0, GANTI_OLI: 0, BELANJA_PART: 0 }, dominantType: null });
+      months.push({ month: y + '-' + (m < 10 ? '0' + m : String(m)), total: 0, byType: { SERVIS: 0, GANTI_OLI: 0, BELANJA_PART: 0, BENSIN: 0, BAN: 0 }, dominantType: null });
     }
     active.forEach(function (r) {
       var idx = Number(String(r.date).substring(5, 7)) - 1;
@@ -231,6 +276,8 @@ var Logic = (function () {
     var fluid = fluidCategories || [];
     var groups = {
       JASA: { key: 'JASA', label: 'Servis & Jasa', total: 0, records: {}, samples: [] },
+      FUEL: { key: 'FUEL', label: 'Bensin (BBM)', total: 0, records: {}, samples: [] },
+      TIRE: { key: 'TIRE', label: 'Ban', total: 0, records: {}, samples: [] },
       FLUID: { key: 'FLUID', label: 'Oli & Cairan', total: 0, records: {}, samples: [] },
       PART: { key: 'PART', label: 'Suku Cadang (Part)', total: 0, records: {}, samples: [] },
     };
@@ -249,12 +296,14 @@ var Logic = (function () {
       if (it.deleted || !ids[it.recordId]) return;
       var sub = calcItemSubtotal(it.qty, it.unitPrice);
       if (!sub) return;
-      var g = fluid.indexOf(it.category) !== -1 ? groups.FLUID : groups.PART;
+      var g = it.category === 'BBM' ? groups.FUEL
+        : (it.category === 'BAN_DEPAN' || it.category === 'BAN_BELAKANG') ? groups.TIRE
+          : fluid.indexOf(it.category) !== -1 ? groups.FLUID : groups.PART;
       g.total += sub;
       g.records[it.recordId] = true;
       addSample(g, it.name);
     });
-    var groupList = ['JASA', 'FLUID', 'PART'].map(function (k) {
+    var groupList = ['JASA', 'FUEL', 'TIRE', 'FLUID', 'PART'].map(function (k) {
       var g = groups[k];
       return {
         key: g.key,
@@ -281,6 +330,8 @@ var Logic = (function () {
   }
 
   return {
+    fuelEconomy: fuelEconomy,
+    averageEconomy: averageEconomy,
     summarizeYear: summarizeYear,
     parseISODate: parseISODate,
     isValidISODate: isValidISODate,

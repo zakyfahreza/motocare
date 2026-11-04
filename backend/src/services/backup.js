@@ -11,7 +11,8 @@ var BackupService = {
       recordItems: Db.all(SHEETS.ITEMS),
       reminders: Db.all(SHEETS.REMINDERS),
       categories: Db.all(SHEETS.CATEGORIES),
-      motorPhotos: PhotoService.get({}),
+      // Foto disimpan sebagai file di Google Drive; cadangan memuat lokasi foldernya saja.
+      photoFolderUrl: DriveStore.folderUrl(),
     };
   },
 };

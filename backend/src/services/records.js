@@ -64,6 +64,10 @@ var RecordService = {
     var id = requireId_(payload);
     var record = RecordService.getOrThrow_(id);
     record.items = Db.all(SHEETS.ITEMS).filter(function (it) { return it.recordId === id; });
+    if (record.type === 'BENSIN') {
+      var eco = Logic.fuelEconomy(RecordService.fuelFills_(record.motorId));
+      record.economy = eco[record.id] || null;
+    }
     return record;
   },
 
@@ -101,20 +105,29 @@ var RecordService = {
     var motor = MotorService.getOrThrow(motorId);
     var data = RecordService.validate_(payload);
     RecordService.checkOdometer_(motorId, null, data, payload.confirmOdometer === true);
+    var photos = PhotoService.prepareRecordPhotos(payload.photos, [], 'nota-' + data.date);
 
-    var totals = Logic.calcRecordTotals(data.items, data.serviceFee);
-    var record = Db.insert(SHEETS.RECORDS, {
-      motorId: motorId,
-      date: data.date,
-      type: data.type,
-      odometer: data.odometer,
-      place: data.place,
-      serviceFee: data.serviceFee,
-      itemsTotal: totals.itemsTotal,
-      grandTotal: totals.grandTotal,
-      notes: data.notes,
-    });
-    RecordService.insertItems_(record, data.items);
+    try {
+      var totals = Logic.calcRecordTotals(data.items, data.serviceFee);
+      var record = Db.insert(SHEETS.RECORDS, {
+        motorId: motorId,
+        date: data.date,
+        type: data.type,
+        odometer: data.odometer,
+        place: data.place,
+        serviceFee: data.serviceFee,
+        itemsTotal: totals.itemsTotal,
+        grandTotal: totals.grandTotal,
+        notes: data.notes,
+        tags: data.tags.join(','),
+        details: data.details,
+        photoIds: photos.ids.join(','),
+      });
+      RecordService.insertItems_(record, data.items);
+    } catch (err) {
+      photos.created.forEach(DriveStore.trash);
+      throw err;
+    }
     MotorService.bumpOdometer(motor, data.odometer);
     return RecordService.get({ id: record.id });
   },
@@ -125,20 +138,33 @@ var RecordService = {
     var motor = MotorService.getOrThrow(existing.motorId);
     var data = RecordService.validate_(payload);
     RecordService.checkOdometer_(existing.motorId, id, data, payload.confirmOdometer === true);
+    var oldIds = splitIds_(existing.photoIds);
+    var photos = PhotoService.prepareRecordPhotos(payload.photos, oldIds, 'nota-' + data.date);
 
-    var totals = Logic.calcRecordTotals(data.items, data.serviceFee);
-    var record = Db.update(SHEETS.RECORDS, id, {
-      date: data.date,
-      type: data.type,
-      odometer: data.odometer,
-      place: data.place,
-      serviceFee: data.serviceFee,
-      itemsTotal: totals.itemsTotal,
-      grandTotal: totals.grandTotal,
-      notes: data.notes,
-    });
-    Db.softDeleteWhere(SHEETS.ITEMS, function (it) { return it.recordId === id; });
-    RecordService.insertItems_(record, data.items);
+    var record;
+    try {
+      var totals = Logic.calcRecordTotals(data.items, data.serviceFee);
+      record = Db.update(SHEETS.RECORDS, id, {
+        date: data.date,
+        type: data.type,
+        odometer: data.odometer,
+        place: data.place,
+        serviceFee: data.serviceFee,
+        itemsTotal: totals.itemsTotal,
+        grandTotal: totals.grandTotal,
+        notes: data.notes,
+        tags: data.tags.join(','),
+        details: data.details,
+        photoIds: photos.ids.join(','),
+      });
+      Db.softDeleteWhere(SHEETS.ITEMS, function (it) { return it.recordId === id; });
+      RecordService.insertItems_(record, data.items);
+    } catch (err) {
+      photos.created.forEach(DriveStore.trash);
+      throw err;
+    }
+    // Foto yang dilepas dari catatan dibuang ke sampah Drive.
+    oldIds.forEach(function (fid) { if (photos.ids.indexOf(fid) === -1) DriveStore.trash(fid); });
     MotorService.bumpOdometer(motor, data.odometer);
     return RecordService.get({ id: id });
   },
@@ -204,6 +230,20 @@ var RecordService = {
       .int('serviceFee', { min: 0, max: 1000000000, defaultValue: 0 })
       .string('notes', { max: 1000 });
 
+    var type = payload && payload.type;
+    if (type === 'BENSIN') return RecordService.validateFuel_(payload, v);
+    if (type === 'BAN') return RecordService.validateTire_(payload, v);
+
+    // Jenis servis (chip) — hanya untuk tipe servis.
+    var tags = [];
+    if (payload && payload.tags !== undefined && payload.tags !== null) {
+      if (!Array.isArray(payload.tags) || payload.tags.some(function (t) { return SERVICE_TAGS.indexOf(t) === -1; })) {
+        v.addError('tags', 'Jenis servis tidak valid');
+      } else {
+        payload.tags.forEach(function (t) { if (tags.indexOf(t) === -1) tags.push(t); });
+      }
+    }
+
     var rawItems = payload && payload.items !== undefined ? payload.items : [];
     var items = [];
     if (!Array.isArray(rawItems)) {
@@ -224,7 +264,6 @@ var RecordService = {
       });
     }
 
-    var type = payload && payload.type;
     if (!v.hasErrors()) {
       if (type === 'BELANJA_PART' && items.length === 0) {
         v.addError('items', 'Belanja part wajib memiliki minimal 1 item');
@@ -235,7 +274,82 @@ var RecordService = {
     }
     var data = v.done();
     data.items = items;
+    data.tags = tags;
+    data.details = '';
     return data;
+  },
+
+  /** Bensin: item BBM dibuat server dari liter × harga per liter. */
+  validateFuel_: function (payload, v) {
+    var raw = payload.fuel && typeof payload.fuel === 'object' ? payload.fuel : {};
+    var fv = new Validator_(raw, 'fuel.');
+    fv.string('fuelType', { required: true, max: 40 })
+      .number('liters', { required: true, gt: 0, max: 100 })
+      .int('pricePerLiter', { required: true, min: 0, max: 100000 })
+      .bool('fullTank', { defaultValue: false })
+      .string('station', { max: 30 });
+    Object.keys(fv.errors).forEach(function (k) { v.errors[k] = fv.errors[k]; });
+    var data = v.done();
+    var f = fv.out;
+    f.liters = Math.round(f.liters * 100) / 100;
+    data.serviceFee = 0;
+    data.tags = [];
+    data.items = [{ category: FUEL_CATEGORY, name: f.fuelType, brand: f.station, qty: f.liters, unitPrice: f.pricePerLiter }];
+    data.details = JSON.stringify({ fuel: f });
+    return data;
+  },
+
+  /** Ban: item ban baru (depan/belakang/sepasang) dibuat server, ongkos pasang + tambahan masuk biaya jasa. */
+  validateTire_: function (payload, v) {
+    var raw = payload.tire && typeof payload.tire === 'object' ? payload.tire : {};
+    var tv = new Validator_(raw, 'tire.');
+    tv.oneOf('action', TIRE_ACTIONS, { required: true })
+      .oneOf('position', TIRE_POSITIONS, { required: true })
+      .string('brand', { max: 60 })
+      .string('size', { max: 30 })
+      .string('dot', { max: 30 })
+      .oneOf('construction', TIRE_CONSTRUCTIONS)
+      .int('psiFront', { min: 0, max: 80 })
+      .int('psiRear', { min: 0, max: 80 })
+      .oneOf('gas', TIRE_GASES)
+      .int('tirePrice', { min: 0, max: 100000000, defaultValue: 0 })
+      .int('installFee', { min: 0, max: 100000000, defaultValue: 0 })
+      .int('extraFee', { min: 0, max: 100000000, defaultValue: 0 });
+    if (raw.action === 'GANTI' && !(String(raw.brand || '').trim())) tv.addError('brand', 'Wajib diisi untuk ganti ban');
+    Object.keys(tv.errors).forEach(function (k) { v.errors[k] = tv.errors[k]; });
+    var data = v.done();
+    var t = tv.out;
+    if (t.action !== 'GANTI') t.tirePrice = 0;
+    var items = [];
+    if (t.action === 'GANTI') {
+      var cats = t.position === 'DEPAN' ? ['BAN_DEPAN'] : t.position === 'BELAKANG' ? ['BAN_BELAKANG'] : TIRE_CATEGORIES;
+      var name = [t.brand, t.size].filter(Boolean).join(' ').substring(0, 100);
+      cats.forEach(function (c) { items.push({ category: c, name: name, brand: t.brand.substring(0, 50), qty: 1, unitPrice: t.tirePrice }); });
+    }
+    data.serviceFee = t.installFee + t.extraFee;
+    data.tags = [];
+    data.items = items;
+    data.details = JSON.stringify({ tire: t });
+    return data;
+  },
+
+  /** Riwayat isi bensin satu motor (ringkas) untuk menghitung konsumsi km/liter. */
+  fuelHistory: function (payload) {
+    var motorId = requireId_(payload, 'motorId');
+    return RecordService.fuelFills_(motorId);
+  },
+
+  fuelFills_: function (motorId) {
+    return Db.all(SHEETS.RECORDS)
+      .filter(function (r) { return r.motorId === motorId && r.type === 'BENSIN'; })
+      .map(function (r) {
+        var f = (parseDetails_(r.details).fuel) || {};
+        return {
+          id: r.id, date: r.date, odometer: r.odometer, liters: Number(f.liters) || 0, fullTank: f.fullTank === true, createdAt: r.createdAt,
+          fuelType: f.fuelType || '', pricePerLiter: Number(f.pricePerLiter) || 0, station: f.station || '',
+        };
+      })
+      .sort(function (a, b) { return a.odometer - b.odometer || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
   },
 
   /**
@@ -261,3 +375,14 @@ var RecordService = {
     }
   },
 };
+
+/** JSON rincian Bensin/Ban dari sel; objek kosong jika kosong/rusak. */
+function parseDetails_(s) {
+  if (!s) return {};
+  try {
+    var o = JSON.parse(s);
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
+}

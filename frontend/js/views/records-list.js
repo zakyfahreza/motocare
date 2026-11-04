@@ -1,9 +1,10 @@
 import { h } from '../utils/dom.js';
-import { call } from '../api.js';
+import { call, read } from '../api.js';
 import { formatRupiah, formatNumber, formatDate, TYPE_LABELS, todayISO } from '../utils/format.js';
 import { pageHead, typeBadge, emptyState, field, busy, toast, toastError, downloadFile } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { TYPE_ICONS } from '../ui/meta.js';
+import { TYPE_ICONS, recordTitle } from '../ui/meta.js';
+import { parseDetails } from '../utils/format.js';
 import { loadCategories, categoryLabel } from '../state.js';
 import { navigate, buildHash } from '../router.js';
 
@@ -18,7 +19,7 @@ export async function render({ motor, query, mount }) {
   };
   const [categories, first] = await Promise.all([
     loadCategories(),
-    call('records.list', { motorId: motor.id, ...filters, limit: PAGE_SIZE, offset: 0 }),
+    read('records.list', { motorId: motor.id, ...filters, limit: PAGE_SIZE, offset: 0 }),
   ]);
   const activeCount = Object.values(filters).filter(Boolean).length;
 
@@ -31,6 +32,7 @@ export async function render({ motor, query, mount }) {
     h('option', { value: '' }, 'Semua kategori'),
     categories.map((c) => h('option', { value: c.code, selected: c.code === filters.category }, c.label)),
     h('option', { value: 'JASA', selected: filters.category === 'JASA' }, 'Jasa Servis'),
+    h('option', { value: 'BBM', selected: filters.category === 'BBM' }, 'Bahan Bakar (BBM)'),
   );
   const fromInput = h('input', { type: 'date', value: filters.from });
   const toInput = h('input', { type: 'date', value: filters.to });
@@ -132,9 +134,8 @@ export async function render({ motor, query, mount }) {
 }
 
 function recordCard(r) {
-  const title = r.itemNames && r.itemNames.length
-    ? r.itemNames.join(', ') + (r.itemCount > r.itemNames.length ? ` +${r.itemCount - r.itemNames.length}` : '')
-    : (r.type === 'SERVIS' ? 'Jasa servis' : TYPE_LABELS[r.type]);
+  const title = recordTitle(r, parseDetails(r.details)) || (r.type === 'SERVIS' ? 'Jasa servis' : TYPE_LABELS[r.type]);
+  const photoCount = String(r.photoIds || '').split(',').filter(Boolean).length;
   const noteLine = (r.notes || '').split('\n')[0].trim();
   return h('a', { class: 'card record-card', href: `#/records/${encodeURIComponent(r.id)}` },
     h('div', { class: 'row-between' },
@@ -143,7 +144,8 @@ function recordCard(r) {
     ),
     h('div', { class: 'meta mt-8' },
       icon('speed', 18), h('span', { class: 'num' }, `${formatNumber(r.odometer)} km`),
-      r.place && [h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), icon('storefront', 18), h('span', null, r.place)],
+      r.place && [h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), icon(r.type === 'BENSIN' ? 'local_gas_station' : 'storefront', 18), h('span', null, r.place)],
+      photoCount ? [h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), icon('photo_camera', 18), h('span', null, `${photoCount} foto`)] : null,
     ),
     h('div', { class: 'row-between mt-12', style: { alignItems: 'flex-end' } },
       h('div', { class: 'stack grow' },

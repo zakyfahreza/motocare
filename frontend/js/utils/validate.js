@@ -36,9 +36,28 @@ export function validateRecord(data) {
   else if (data.date > addDaysISO(todayISO(), 1)) e.date = 'Tanggal tidak boleh di masa depan';
   if (data.odometer === null) e.odometer = 'Wajib diisi';
   else if (Number.isNaN(data.odometer) || data.odometer < 0) e.odometer = 'Harus angka ≥ 0';
-  if (Number.isNaN(data.serviceFee) || data.serviceFee < 0) e.serviceFee = 'Harus angka ≥ 0';
   if (data.notes.length > 1000) e.notes = 'Maksimal 1.000 karakter';
   if (data.place.length > 100) e.place = 'Maksimal 100 karakter';
+
+  if (data.type === 'BENSIN') {
+    const f = data.fuel;
+    if (!f.fuelType.trim()) e['fuel.fuelType'] = 'Pilih jenis bahan bakar';
+    if (f.liters === null || Number.isNaN(f.liters) || !(f.liters > 0)) e['fuel.liters'] = 'Harus > 0';
+    else if (f.liters > 100) e['fuel.liters'] = 'Maksimal 100 liter';
+    if (f.pricePerLiter === null || Number.isNaN(f.pricePerLiter) || f.pricePerLiter < 0) e['fuel.pricePerLiter'] = 'Harus angka ≥ 0';
+    return e;
+  }
+  if (data.type === 'BAN') {
+    const t = data.tire;
+    if (!t.action) e['tire.action'] = 'Pilih tipe perawatan';
+    if (!t.position) e['tire.position'] = 'Pilih posisi ban';
+    if (t.action === 'GANTI' && !t.brand.trim()) e['tire.brand'] = 'Wajib diisi untuk ganti ban';
+    ['tirePrice', 'installFee', 'extraFee'].forEach((k) => { if (Number.isNaN(t[k]) || t[k] < 0) e[`tire.${k}`] = 'Harus angka ≥ 0'; });
+    ['psiFront', 'psiRear'].forEach((k) => { if (t[k] !== null && (Number.isNaN(t[k]) || t[k] < 0 || t[k] > 80)) e[`tire.${k}`] = '0–80 PSI'; });
+    return e;
+  }
+
+  if (Number.isNaN(data.serviceFee) || data.serviceFee < 0) e.serviceFee = 'Harus angka ≥ 0';
 
   data.items.forEach((it, i) => {
     const p = `items.${i}.`;

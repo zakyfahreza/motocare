@@ -146,7 +146,8 @@ nonaktifkan workflow *Deploy frontend (GitHub Pages)* di tab Actions.
 5. Perbarui odometer kapan saja lewat tombol **Update km** agar pengingat akurat.
 
 6. **Garasi** (Lainnya → Motor) menampilkan semua motor, spesifikasi (tangki, oli, ban), dan pengingat paling mendesak per motor.
-   **Foto motor**: tekan "Tambah foto" di kartu motor, atau buka Edit motor → Foto motor kesayangan → Galeri/Kamera. Foto dikompres otomatis dan disimpan di sheet `motor_photos`.
+   **Foto motor**: tekan "Tambah foto" di kartu motor, atau buka Edit motor → Foto motor kesayangan → Galeri/Kamera. Foto dikompres otomatis dan disimpan di folder Google Drive **MotoCare Foto**.
+   **Catatan Servis / Bensin / Ban**: tombol ＋ → pilih kategori. Setiap catatan bisa diberi maks. 2 foto nota/struk/part (juga ke Google Drive). Bensin dengan "Isi Penuh" menghitung konsumsi km/liter otomatis.
 7. **Laporan** menampilkan total biaya per tahun, perbandingan dengan tahun lalu, grafik bulanan, kelompok biaya, dan biaya per km.
 8. **Cadangan & ekspor**: Lainnya → Cadangkan Data (file JSON), atau Riwayat/Laporan → Ekspor (CSV untuk Excel).
 9. **Tema** terang/gelap bisa diganti di Pengaturan.
@@ -161,7 +162,11 @@ datanya tidak hilang. Hindari mengubah baris header (baris 1) di spreadsheet.
 - **Tambah kategori**: aplikasi → Lainnya → Pengaturan → ＋ Kategori.
 - **Update kode backend manual** (tanpa GitHub Actions): `Push-Location backend; npx clasp push --force; npx clasp update-deployment DEPLOYMENT_ID; Pop-Location`.
   Tanpa `update-deployment`, web app tetap menjalankan versi lama.
-- **Update dari versi lama**: kolom baru di spreadsheet (misalnya spesifikasi motor di v0.2) ditambahkan otomatis saat aplikasi pertama kali membaca sheet. `setup()` tidak perlu dijalankan ulang.
+- **Update dari versi lama**: kolom baru di spreadsheet ditambahkan otomatis saat aplikasi pertama kali membaca sheet.
+- **Update ke v0.4 (foto di Google Drive)** — wajib sekali, karena butuh izin Drive:
+  1. `Push-Location backend; npx clasp push --force; Pop-Location`
+  2. Di editor Apps Script jalankan **`setup()`** → setujui izin baru (Google Drive). Ini membuat folder **MotoCare Foto** di Drive dan memindahkan foto motor lama dari spreadsheet.
+  3. Perbarui deployment agar web app memakai kode & izin baru: `Push-Location backend; npx clasp update-deployment DEPLOYMENT_ID; Pop-Location` (atau Deploy → Manage deployments → Edit → Version: New version).
 - **Uji performa** (opsional): jalankan `dev_seedDummy()` lalu `dev_benchmark()` di editor Apps Script. Hapus motor "Motor Uji" setelahnya.
 
 ## 9. Troubleshooting

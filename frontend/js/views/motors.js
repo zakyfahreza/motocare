@@ -1,5 +1,5 @@
 import { h } from '../utils/dom.js';
-import { call } from '../api.js';
+import { call, read } from '../api.js';
 import { formatNumber, formatTimestamp, formatKm } from '../utils/format.js';
 import {
   pageHead, emptyState, confirmDialog, toast, toastError, numberInput, readNumber, busy,
@@ -9,7 +9,7 @@ import { TRANSMISSION_LABELS } from '../ui/meta.js';
 import { getActiveMotor, setActiveMotorId, invalidateMotors, getMotors } from '../state.js';
 import { navigate } from '../router.js';
 import { exportBackup } from './more.js';
-import { loadPhotos, compressImage, savePhoto, fileInputs } from '../photos.js';
+import { loadPhotos, cachedPhoto, compressImage, savePhoto, fileInputs } from '../photos.js';
 
 function compactRupiah(n) {
   if (n >= 1e6) return `Rp ${(n / 1e6).toFixed(1).replace('.', ',').replace(',0', '')}jt`;
@@ -28,11 +28,16 @@ function reminderLine(stats) {
   return { cls: 'c-ok', iconName: 'check_circle', text: 'Semua jadwal servis aman' };
 }
 
-export async function render({ mount, refresh }) {
-  const [{ motors, totals }, photos] = await Promise.all([
-    call('motors.overview'),
-    loadPhotos(getMotors()).catch(() => ({})),
-  ]);
+export async function render({ mount, refresh, isCurrent }) {
+  const { motors, totals } = await read('motors.overview');
+  // Foto tidak menahan tampilan: pakai yang sudah ada di perangkat, sisanya dimuat lalu halaman digambar ulang.
+  const photos = {};
+  const missing = [];
+  getMotors().forEach((m) => {
+    const url = cachedPhoto(m);
+    if (url) photos[m.id] = url; else if (m.photoFileId) missing.push(m);
+  });
+  if (missing.length) loadPhotos(missing).then((p) => { if (Object.keys(p).length && isCurrent()) refresh(); }).catch(() => {});
   const active = getActiveMotor();
 
   const after = (msg) => {

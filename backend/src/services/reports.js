@@ -18,6 +18,26 @@ var ReportService = {
     summary.recent = records.slice().sort(Logic.compareRecordsDesc).slice(0, 3).map(function (r) {
       return RecordService.toSummary_(r, byRecord[r.id] || []);
     });
+    // Bensin tahun ini: total liter, biaya, rata-rata km/L (full-to-full).
+    var yearPrefix = p.year + '-';
+    var fills = RecordService.fuelFills_(motorId);
+    var eco = Logic.fuelEconomy(fills);
+    var inYear = {};
+    var liters = 0;
+    var fuelSpend = 0;
+    records.forEach(function (r) {
+      if (r.type !== 'BENSIN' || String(r.date).indexOf(yearPrefix) !== 0) return;
+      inYear[r.id] = true;
+      fuelSpend += Number(r.grandTotal) || 0;
+    });
+    fills.forEach(function (f) { if (inYear[f.id]) liters += f.liters; });
+    summary.fuel = {
+      fills: Object.keys(inYear).length,
+      liters: Math.round(liters * 100) / 100,
+      spend: fuelSpend,
+      avgKmPerL: Logic.averageEconomy(eco, inYear),
+    };
+
     var years = {};
     records.forEach(function (r) { years[String(r.date).substring(0, 4)] = true; });
     years[String(currentYear)] = true;

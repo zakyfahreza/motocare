@@ -118,7 +118,7 @@ test('records: create/validasi/odometer/list/update/delete + dashboard & laporan
   const forced = okData(app.call('records.create', Object.assign({ confirmOdometer: true }, lower)));
   assert.equal(okData(app.call('motors.list', {}))[0].odometerCurrent, 13000, 'odometer tidak turun');
 
-  // Status pengingat oli: last 12000, next 14000, current 13000 → OK sisa 1000
+  // Status pengingat oli: last 12000, next 14000, current 13000 â†’ OK sisa 1000
   let oilRem = okData(app.call('reminders.list', { motorId: m.id })).find((r) => r.category === 'OLI_MESIN');
   assert.equal(oilRem.status, 'OK');
   assert.equal(oilRem.remainingKm, 1000);
@@ -291,7 +291,7 @@ test('v2: records.list sumTotal, records.export, reports.summary, backup.export,
   assert.equal(s.months[5].total, 135000);
   assert.equal(s.months[5].dominantType, 'SERVIS');
   assert.equal(s.months[7].dominantType, 'GANTI_OLI');
-  assert.equal(s.average, Math.round(255000 / 11), 'tahun berjalan: dibagi 11 bulan (Jan–Nov)');
+  assert.equal(s.average, Math.round(255000 / 11), 'tahun berjalan: dibagi 11 bulan (Janâ€“Nov)');
   assert.equal(s.biggest.grandTotal, 135000);
   const g = Object.fromEntries(s.groups.map((x) => [x.key, x]));
   assert.equal(g.JASA.total, 45000);
@@ -315,58 +315,183 @@ test('v2: records.list sumTotal, records.export, reports.summary, backup.export,
   assert.equal(bk.motors.length, 1);
 });
 
-test('v3: foto motor — simpan, pecah per sel, ambil, ganti, hapus, validasi', () => {
-  const app = setupApp();
-  const a = okData(app.call('motors.create', { name: 'Vario', odometerStart: 0 }));
-  const b = okData(app.call('motors.create', { name: 'Beat', odometerStart: 0 }));
 
-  // Validasi
+const JPG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+
+test('v4: foto motor di Google Drive — simpan, ambil, ganti (lama dibuang), hapus, validasi', () => {
+  const app = setupApp();
+  const a = okData(app.call('motors.create', { name: 'Vario Harian', odometerStart: 0 }));
+
   assert.equal(errCode(app.call('motors.setPhoto', { id: a.id })), 'VALIDATION_ERROR');
   assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:text/html;base64,PHNjcmlwdD4=' })), 'VALIDATION_ERROR');
-  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:image/jpeg;base64,<bukan base64>' })), 'VALIDATION_ERROR');
-  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(app.ctx.PHOTO_MAX_CHARS) })), 'VALIDATION_ERROR');
-  assert.equal(errCode(app.call('motors.setPhoto', { id: 'tidak-ada', dataUrl: 'data:image/jpeg;base64,AAAA' })), 'NOT_FOUND');
+  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(app.ctx.PHOTO_UPLOAD_MAX_CHARS) })), 'VALIDATION_ERROR');
 
-  // Foto besar (> 1 sel) dipecah, diawali '+' di sel lanjutan tetap utuh
-  const body = ('+/AB'.repeat(25000)).slice(0, 99990);
-  const big = 'data:image/jpeg;base64,' + body;
-  const saved = okData(app.call('motors.setPhoto', { id: a.id, dataUrl: big }));
-  assert.ok(saved.photoUpdatedAt);
-  const sheet = app.spreadsheet().getSheetByName('motor_photos');
-  const row = sheet.data[1];
-  assert.ok(row.every((cell) => typeof cell !== 'string' || cell.length <= 40001), 'tiap sel ≤ 40.000 karakter');
-  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], big);
-  assert.equal(okData(app.call('motors.list', {})).find((m) => m.id === a.id).photoUpdatedAt, saved.photoUpdatedAt);
+  const s1 = okData(app.call('motors.setPhoto', { id: a.id, dataUrl: JPG }));
+  const f1 = app.drive.items.get(s1.photoFileId);
+  assert.ok(f1 && f1.kind === 'file' && !f1.trashed);
+  assert.match(f1.name, /^motor-vario-harian-\d{8}-\d{6}\.jpg$/);
+  const sub = app.drive.items.get(f1.parent);
+  assert.equal(sub.name, 'Foto Motor');
+  assert.equal(app.drive.items.get(sub.parent).name, 'MotoCare Foto');
+  assert.equal(okData(app.call('photos.get', { ids: [s1.photoFileId] }))[s1.photoFileId], JPG);
 
-  // Ganti foto: baris yang sama ditimpa (tidak menambah baris)
-  const small = 'data:image/webp;base64,UklGRg==';
-  okData(app.call('motors.setPhoto', { id: a.id, dataUrl: small }));
-  okData(app.call('motors.setPhoto', { id: b.id, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }));
-  assert.equal(sheet.getLastRow(), 3);
-  const photos = okData(app.call('motors.getPhotos', { ids: [a.id] }));
-  assert.deepEqual(Object.keys(photos), [a.id]);
-  assert.equal(photos[a.id], small);
+  const s2 = okData(app.call('motors.setPhoto', { id: a.id, dataUrl: PNG }));
+  assert.notEqual(s2.photoFileId, s1.photoFileId);
+  assert.equal(f1.trashed, true, 'foto lama dibuang ke sampah');
+  assert.equal(okData(app.call('motors.list', {}))[0].photoFileId, s2.photoFileId);
 
-  // Hapus foto: data dikosongkan
+  // Tidak boleh membaca file Drive yang tidak tercatat di aplikasi
+  const foreign = app.drive.api.createFolder('Lain').createFile(new (class { getName() { return 'x'; } getBytes() { return [1]; } getContentType() { return 'image/png'; } })());
+  assert.deepEqual(okData(app.call('photos.get', { ids: [foreign.getId(), s1.photoFileId] })), {});
+  assert.equal(errCode(app.call('photos.get', { ids: Array.from({ length: 11 }, (_, i) => 'x' + i) })), 'VALIDATION_ERROR');
+
   okData(app.call('motors.removePhoto', { id: a.id }));
-  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], undefined);
-  assert.equal(okData(app.call('motors.list', {})).find((m) => m.id === a.id).photoUpdatedAt, '');
-  assert.ok(!sheet.data[1].some((c) => typeof c === 'string' && c.startsWith('data:')));
-  okData(app.call('motors.setPhoto', { id: a.id, dataUrl: small }));
-  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], small, 'baris terhapus bisa dipakai lagi');
-
-  // Hapus motor ikut membersihkan foto; backup memuat foto aktif
-  okData(app.call('motors.delete', { id: b.id }));
-  const bk = okData(app.call('backup.export', {}));
-  assert.deepEqual(Object.keys(bk.motorPhotos), [a.id]);
+  assert.equal(app.drive.items.get(s2.photoFileId).trashed, true);
+  assert.equal(okData(app.call('motors.list', {}))[0].photoFileId, '');
+  assert.ok(okData(app.call('settings.get', {})).photoFolderUrl.startsWith('https://drive.google.com/drive/folders/'));
 });
 
-test('v3: sheet foto dibuat otomatis jika belum ada (spreadsheet lama)', () => {
+test('v4: migrasi foto lama (sheet motor_photos) ke Drive lewat setup()', () => {
   const app = setupApp();
-  const ss = app.spreadsheet();
-  ss.deleteSheet(ss.getSheetByName('motor_photos'));
+  const m = okData(app.call('motors.create', { name: 'Lama', odometerStart: 0 }));
+  // Simulasikan data v0.3
+  const db = app.ctx.Db;
+  db.reset();
+  db.upsert('motor_photos', m.id, { mime: 'image/jpeg', chars: JPG.length, part1: JPG.slice(0, 10), part2: JPG.slice(10), deleted: false });
+  db.update('motors', m.id, { photoUpdatedAt: '2026-11-01T00:00:00Z' });
+  app.ctx.setup();
+  const mm = okData(app.call('motors.list', {}))[0];
+  assert.ok(mm.photoFileId);
+  assert.equal(okData(app.call('photos.get', { ids: [mm.photoFileId] }))[mm.photoFileId], JPG);
+  app.ctx.setup();
+  assert.equal(okData(app.call('motors.list', {}))[0].photoFileId, mm.photoFileId, 'idempoten');
+});
+
+test('v4: foto nota catatan — buat, pertahankan, ganti, batas 2, milik catatan lain ditolak', () => {
+  const app = setupApp();
   const m = okData(app.call('motors.create', { name: 'Vario', odometerStart: 0 }));
-  okData(app.call('motors.setPhoto', { id: m.id, dataUrl: 'data:image/jpeg;base64,/9j/4AAQ' }));
-  assert.ok(ss.getSheetByName('motor_photos'));
-  assert.equal(okData(app.call('motors.getPhotos', {}))[m.id], 'data:image/jpeg;base64,/9j/4AAQ');
+  const base = { motorId: m.id, date: '2026-11-01', type: 'SERVIS', odometer: 100, serviceFee: 10000 };
+  assert.equal(errCode(app.call('records.create', { ...base, photos: [{ dataUrl: JPG }, { dataUrl: JPG }, { dataUrl: JPG }] })), 'VALIDATION_ERROR');
+  assert.equal(errCode(app.call('records.create', { ...base, photos: [{ dataUrl: 'data:image/gif;base64,R0lG' }] })), 'VALIDATION_ERROR');
+  const filesBefore = app.drive.items.size;
+  assert.equal(errCode(app.call('records.create', { ...base, date: '', photos: [{ dataUrl: JPG }] })), 'VALIDATION_ERROR');
+  assert.equal(app.drive.items.size, filesBefore, 'tidak ada file dibuat jika validasi gagal');
+
+  const r = okData(app.call('records.create', { ...base, photos: [{ dataUrl: JPG }, { dataUrl: PNG }] }));
+  const ids = r.photoIds.split(',');
+  assert.equal(ids.length, 2);
+  assert.equal(app.drive.items.get(app.drive.items.get(ids[0]).parent).name, 'Nota & Part');
+  const got = okData(app.call('photos.get', { ids }));
+  assert.equal(got[ids[0]], JPG);
+  assert.equal(got[ids[1]], PNG);
+
+  // Update tanpa field photos → foto tetap
+  okData(app.call('records.update', { ...base, id: r.id, serviceFee: 20000 }));
+  assert.equal(okData(app.call('records.get', { id: r.id })).photoIds, r.photoIds);
+  // Pertahankan foto 1, buang foto 2, tambah foto baru
+  const u = okData(app.call('records.update', { ...base, id: r.id, photos: [{ id: ids[0] }, { dataUrl: JPG }] }));
+  const ids2 = u.photoIds.split(',');
+  assert.equal(ids2[0], ids[0]);
+  assert.notEqual(ids2[1], ids[1]);
+  assert.equal(app.drive.items.get(ids[1]).trashed, true);
+
+  // Tidak bisa menempelkan foto milik catatan lain
+  const r2 = okData(app.call('records.create', { ...base, date: '2026-11-02' }));
+  assert.equal(errCode(app.call('records.update', { ...base, id: r2.id, date: '2026-11-02', photos: [{ id: ids[0] }] })), 'VALIDATION_ERROR');
+});
+
+test('v4: catatan Bensin — item BBM dari liter × harga, konsumsi km/L full-to-full', () => {
+  const app = setupApp();
+  const m = okData(app.call('motors.create', { name: 'Aerox', odometerStart: 18000 }));
+  const fuel = (date, odo, liters, price, fullTank, extra = {}) => app.call('records.create', {
+    motorId: m.id, date, type: 'BENSIN', odometer: odo, place: 'Pertamina MT Haryono',
+    fuel: { fuelType: 'Pertamax', liters, pricePerLiter: price, fullTank, station: 'Pertamina' }, ...extra,
+  });
+  const bad = fuel('2026-11-01', 18100, 0, -1, 'ya');
+  assert.equal(errCode(bad), 'VALIDATION_ERROR');
+  assert.ok(bad.error.fields['fuel.liters'] && bad.error.fields['fuel.pricePerLiter'] && bad.error.fields['fuel.fullTank']);
+  assert.equal(errCode(app.call('records.create', { motorId: m.id, date: '2026-11-01', type: 'BENSIN', odometer: 1 })), 'VALIDATION_ERROR');
+
+  const a = okData(fuel('2026-10-20', 18200, 4, 12950, true));
+  assert.equal(a.items.length, 1);
+  assert.equal(a.items[0].category, 'BBM');
+  assert.equal(a.grandTotal, 51800);
+  assert.equal(a.serviceFee, 0);
+  assert.equal(a.economy, null, 'isi penuh pertama belum punya pembanding');
+  // Abaikan items & serviceFee dari klien
+  const b = okData(fuel('2026-10-25', 18300, 1.5, 12950, false, { items: [{ category: 'AKI', name: 'x', qty: 1, unitPrice: 999999 }], serviceFee: 50000 }));
+  assert.equal(b.grandTotal, Math.round(1.5 * 12950));
+  const c = okData(fuel('2026-11-01', 18400, 3.5, 12950, true));
+  assert.deepEqual(c.economy, { distance: 200, liters: 5, kmPerL: 40 });
+  assert.equal(JSON.parse(c.details).fuel.fullTank, true);
+
+  const hist = okData(app.call('records.fuelHistory', { motorId: m.id }));
+  assert.deepEqual(hist.map((f) => f.odometer), [18200, 18300, 18400]);
+  assert.equal(okData(app.call('records.list', { motorId: m.id, category: 'BBM' })).total, 3);
+
+  const s = okData(app.call('reports.summary', { motorId: m.id, year: 2026 }));
+  assert.equal(s.fuel.fills, 3);
+  assert.equal(s.fuel.liters, 9);
+  assert.equal(s.fuel.avgKmPerL, 40);
+  assert.equal(s.groups.find((g) => g.key === 'FUEL').total, 51800 + Math.round(1.5 * 12950) + Math.round(3.5 * 12950));
+  assert.equal(s.months[10].byType.BENSIN > 0, true);
+  const cats = okData(app.call('reports.byCategory', { motorId: m.id, year: 2026 }));
+  assert.equal(cats.find((x) => x.category === 'BBM').label, 'Bahan Bakar (BBM)');
+});
+
+test('v4: catatan Ban — ganti sepasang membuat 2 item, jasa = pasang + tambahan, reminder ban terpicu', () => {
+  const app = setupApp();
+  const m = okData(app.call('motors.create', { name: 'Aerox', odometerStart: 10000 }));
+  okData(app.call('reminders.upsert', { motorId: m.id, category: 'BAN_BELAKANG', intervalKm: 15000 }));
+  const tire = (t, extra = {}) => app.call('records.create', { motorId: m.id, date: '2026-11-01', type: 'BAN', odometer: 19050, place: 'Planet Ban', tire: t, ...extra });
+
+  const bad = tire({ action: 'GANTI', position: 'ATAS' });
+  assert.equal(errCode(bad), 'VALIDATION_ERROR');
+  assert.ok(bad.error.fields['tire.position'] && bad.error.fields['tire.brand']);
+
+  const pair = okData(tire({ action: 'GANTI', position: 'SEPASANG', brand: 'Michelin Pilot Street 2', size: '140/70-14', dot: '2424', construction: 'TL', psiFront: 29, psiRear: 33, gas: 'N2', tirePrice: 355000, installFee: 20000, extraFee: 10000 }));
+  assert.deepEqual(pair.items.map((i) => i.category).sort(), ['BAN_BELAKANG', 'BAN_DEPAN']);
+  assert.equal(pair.items[0].name, 'Michelin Pilot Street 2 140/70-14');
+  assert.equal(pair.serviceFee, 30000);
+  assert.equal(pair.grandTotal, 355000 * 2 + 30000);
+  assert.equal(JSON.parse(pair.details).tire.psiRear, 33);
+  const rem = okData(app.call('reminders.list', { motorId: m.id })).find((r) => r.category === 'BAN_BELAKANG');
+  assert.equal(rem.status, 'OK');
+  assert.equal(rem.lastOdometer, 19050);
+
+  const patch = okData(tire({ action: 'TAMBAL', position: 'BELAKANG', tirePrice: 999999, installFee: 25000 }));
+  assert.equal(patch.items.length, 0, 'tambal tidak membuat item ban');
+  assert.equal(patch.grandTotal, 25000);
+  const s = okData(app.call('reports.summary', { motorId: m.id, year: 2026 }));
+  assert.equal(s.groups.find((g) => g.key === 'TIRE').total, 710000);
+  assert.equal(s.groups.find((g) => g.key === 'JASA').total, 55000);
+});
+
+test('v4: servis dengan jenis (tags) & batch', () => {
+  const app = setupApp();
+  const m = okData(app.call('motors.create', { name: 'Vario', odometerStart: 0 }));
+  assert.equal(errCode(app.call('records.create', { motorId: m.id, date: '2026-11-01', type: 'SERVIS', odometer: 1, tags: ['NGAWUR'] })), 'VALIDATION_ERROR');
+  const r = okData(app.call('records.create', { motorId: m.id, date: '2026-11-01', type: 'SERVIS', odometer: 1, serviceFee: 15000, tags: ['SERVIS_RUTIN', 'SERVIS_CVT', 'SERVIS_RUTIN'] }));
+  assert.equal(r.tags, 'SERVIS_RUTIN,SERVIS_CVT');
+
+  const res = okData(app.call('batch', { calls: [
+    { action: 'motors.list' },
+    { action: 'settings.get' },
+    { action: 'records.list', payload: { motorId: m.id } },
+    { action: 'motors.delete', payload: { id: m.id } },
+    { action: 'tidak.ada' },
+    { action: 'records.get', payload: { id: 'x' } },
+  ] }));
+  assert.equal(res.length, 6);
+  assert.equal(res[0].ok, true);
+  assert.equal(res[0].data.length, 1);
+  assert.equal(res[2].data.total, 1);
+  assert.equal(res[3].ok, false, 'action tulis ditolak di batch');
+  assert.equal(okData(app.call('motors.list', {})).length, 1, 'motor tidak terhapus');
+  assert.equal(res[4].error.code, 'UNKNOWN_ACTION');
+  assert.equal(res[5].error.code, 'NOT_FOUND');
+  assert.equal(errCode(app.call('batch', { calls: [] })), 'BAD_REQUEST');
+  assert.equal(okData(app.call('batch', { calls: [{ action: 'batch', payload: { calls: [] } }] }))[0].error.code, 'UNKNOWN_ACTION', 'batch bersarang ditolak');
+  assert.equal(errCode(app.call('batch', { calls: Array.from({ length: 13 }, () => ({ action: 'motors.list' })) })), 'BAD_REQUEST');
 });

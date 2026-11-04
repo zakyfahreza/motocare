@@ -4,7 +4,9 @@ import { startRouter, matchRoute, navigate } from './router.js';
 import { loadingView, errorState, emptyState } from './ui/components.js';
 import { icon } from './ui/icons.js';
 import { applyTheme } from './theme.js';
-import { getToken, loadMotors, loadSettings, getMotors, getActiveMotor, setActiveMotorId } from './state.js';
+import { getToken, loadBase, getMotors, getActiveMotor, setActiveMotorId } from './state.js';
+import { onStale, prefetch, setCollector } from './api.js';
+import { loadPhotos } from './photos.js';
 
 import * as LoginView from './views/login.js';
 import * as DashboardView from './views/dashboard.js';
@@ -35,12 +37,12 @@ const routes = [
   { path: '/login', view: LoginView, public: true },
   { path: '/', view: DashboardView, nav: 'home', label: 'Beranda', needsMotor: true },
   { path: '/records', view: RecordsListView, nav: 'records', label: 'Riwayat', needsMotor: true },
-  { path: '/records/new', view: RecordFormView, nav: 'new', needsMotor: true, full: { title: 'Tambah Catatan', back: '#/' } },
+  { path: '/records/new', view: RecordFormView, nav: 'new', needsMotor: true, form: true, full: { title: 'Tambah Catatan', back: '#/' } },
   { path: '/records/:id', view: RecordDetailView, nav: 'records', label: 'Detail Catatan' },
-  { path: '/records/:id/edit', view: RecordFormView, nav: 'records', full: { title: 'Edit Catatan', back: '#/records' } },
+  { path: '/records/:id/edit', view: RecordFormView, nav: 'records', form: true, full: { title: 'Edit Catatan', back: '#/records' } },
   { path: '/motors', view: MotorsView, nav: 'more', label: 'Garasi' },
-  { path: '/motors/new', view: MotorFormView, nav: 'more', full: { title: 'Tambah Motor', back: '#/motors', close: true } },
-  { path: '/motors/:id/edit', view: MotorFormView, nav: 'more', full: { title: 'Edit Motor', back: '#/motors', close: true } },
+  { path: '/motors/new', view: MotorFormView, nav: 'more', form: true, full: { title: 'Tambah Motor', back: '#/motors', close: true } },
+  { path: '/motors/:id/edit', view: MotorFormView, nav: 'more', form: true, full: { title: 'Edit Motor', back: '#/motors', close: true } },
   { path: '/reminders', view: RemindersView, nav: 'reminders', label: 'Pengingat', needsMotor: true },
   { path: '/reports', view: ReportsView, nav: 'more', label: 'Laporan Pengeluaran', needsMotor: true },
   { path: '/settings', view: SettingsView, nav: 'more', label: 'Pengaturan' },
@@ -54,6 +56,7 @@ const headerEl = document.getElementById('app-header');
 const navEl = document.getElementById('app-nav');
 
 let renderSeq = 0;
+let loadingTimer = null;
 let lastLocation = null;
 let currentRoute = null;
 
@@ -149,16 +152,55 @@ function setChrome(route) {
 }
 
 export function rerender() {
-  if (lastLocation) handleRoute(lastLocation);
+  if (lastLocation) handleRoute(lastLocation, { silent: true });
 }
 
-async function handleRoute(loc) {
+// ---------- Kecepatan: gambar ulang diam-diam saat data di latar berubah, dan prefetch tab utama ----------
+
+let currentKeys = new Set();
+let staleTimer = null;
+onStale((keys) => {
+  if (!currentRoute || currentRoute.public || currentRoute.form) return;
+  if (![...keys].some((k) => currentKeys.has(k))) return;
+  clearTimeout(staleTimer);
+  staleTimer = setTimeout(() => {
+    // Jangan ganggu pengguna yang sedang membuka dialog atau mengetik.
+    const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (document.querySelector('dialog[open]') || typing) return;
+    rerender();
+  }, 150);
+});
+
+let prefetchTimer = null;
+function schedulePrefetch() {
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => {
+    const m = getActiveMotor();
+    if (!m || !getToken()) return;
+    const year = new Date().getFullYear();
+    prefetch([
+      ['dashboard.get', { motorId: m.id }],
+      ['records.list', { motorId: m.id, limit: 20, offset: 0 }],
+      ['reminders.list', { motorId: m.id }],
+      ['motors.overview'],
+      ['reports.summary', { motorId: m.id, year }],
+      ['records.places', { motorId: m.id }],
+      ['records.fuelHistory', { motorId: m.id }],
+    ]);
+    loadPhotos(getMotors()).catch(() => {});
+  }, 600);
+}
+
+async function handleRoute(loc, { silent = false } = {}) {
   lastLocation = loc;
   const seq = ++renderSeq;
   const isCurrent = () => seq === renderSeq;
   const mount = (...nodes) => {
     if (!isCurrent()) return false;
+    clearTimeout(loadingTimer);
+    const scroll = silent ? window.scrollY : 0;
     mountEl(appEl, ...nodes);
+    if (silent) window.scrollTo(0, scroll);
     return true;
   };
 
@@ -174,12 +216,17 @@ async function handleRoute(loc) {
   currentRoute = route;
   setChrome(route);
   updateHeader();
-  mount(loadingView());
+  // Tampilkan indikator memuat hanya jika data belum ada di perangkat (lebih dari 120 ms).
+  clearTimeout(loadingTimer);
+  if (!silent) loadingTimer = setTimeout(() => { if (isCurrent()) mountEl(appEl, loadingView()); }, 120);
+  const keys = new Set();
+  setCollector(keys);
+  if (!silent) currentKeys = keys;
 
   try {
     let motor = null;
     if (!route.public) {
-      await Promise.all([loadMotors(), loadSettings()]);
+      await loadBase();
       if (!isCurrent()) return;
       updateHeader();
       motor = getActiveMotor();
@@ -195,14 +242,19 @@ async function handleRoute(loc) {
     }
     await route.view.render({ params, query: loc.query, motor, mount, isCurrent, refresh: rerender, updateHeader });
     if (isCurrent()) {
+      currentKeys = keys;
       const heading = appEl.querySelector('h1');
-      if (heading && document.activeElement === document.body) heading.focus({ preventScroll: true });
+      if (!silent && heading && document.activeElement === document.body) heading.focus({ preventScroll: true });
+      if (!route.public && !route.form) schedulePrefetch();
+      else clearTimeout(prefetchTimer);
     }
   } catch (err) {
     if (!isCurrent()) return;
     if (err && err.code === 'UNAUTHORIZED') return; // api.js sudah mengarahkan ke login
     console.error(err);
     mount(errorState(err, () => handleRoute(loc)));
+  } finally {
+    if (isCurrent()) { setCollector(null); clearTimeout(loadingTimer); }
   }
 }
 

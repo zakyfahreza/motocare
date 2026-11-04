@@ -71,6 +71,18 @@ function seed() {
     motorId: m.id, date: shift(400), type: 'SERVIS', odometer: 15200, place: 'AHASS Sudirman', serviceFee: 120000,
     items: [{ category: 'V_BELT', name: 'V-belt kit', brand: 'Honda', qty: 1, unitPrice: 190000 }],
   });
+  const fuel = (days, odo, liters, price, fullTank, place = 'Pertamina MT Haryono') => call('records.create', {
+    motorId: m.id, date: shift(days), type: 'BENSIN', odometer: odo, place,
+    fuel: { fuelType: 'Pertamax', liters, pricePerLiter: price, fullTank, station: 'Pertamina' },
+  });
+  fuel(16, 18850, 4.2, 12950, true);
+  fuel(10, 18950, 1.5, 12950, false);
+  fuel(5, 19000, 2.6, 12950, true, 'Pertamina Tebet');
+  call('records.create', {
+    motorId: m.id, date: shift(8), type: 'BAN', odometer: 18980, place: 'Planet Ban Pos Pengumben',
+    tire: { action: 'GANTI', position: 'BELAKANG', brand: 'Michelin Pilot Street 2', size: '140/70-14', dot: '2424', construction: 'TL', psiFront: 29, psiRear: 33, gas: 'N2', tirePrice: 355000, installFee: 20000, extraFee: 10000 },
+    notes: 'Ban belakang bawaan aus di alur tengah.',
+  });
   call('motors.updateOdometer', { id: m.id, odometer: 19050 });
   call('records.create', {
     motorId: nmax.id, date: shift(30), type: 'GANTI_OLI', odometer: 23800, place: 'Yamaha Surya Motor',
