@@ -4,7 +4,9 @@ import { startRouter, matchRoute, navigate } from './router.js';
 import { loadingView, errorState, emptyState } from './ui/components.js';
 import { icon } from './ui/icons.js';
 import { applyTheme } from './theme.js';
-import { getToken, loadBase, getMotors, getActiveMotor, setActiveMotorId } from './state.js';
+import { getToken, loadBase, getMotors, getActiveMotor, setActiveMotorId, getBackendVersion } from './state.js';
+import { APP_VERSION } from './version.js';
+import { toast } from './ui/components.js';
 import { onStale, prefetch, setCollector } from './api.js';
 import { loadPhotos } from './photos.js';
 
@@ -171,6 +173,20 @@ onStale((keys) => {
   }, 150);
 });
 
+/** Peringatan sekali per sesi jika backend Apps Script lebih lama dari aplikasi (deployment belum diperbarui). */
+let versionWarned = false;
+function warnIfBackendOutdated() {
+  if (versionWarned) return;
+  const backend = getBackendVersion();
+  if (!backend) return;
+  const [a1, a2] = APP_VERSION.split('.').map(Number);
+  const [b1, b2] = backend.split('.').map(Number);
+  if (b1 < a1 || (b1 === a1 && b2 < a2)) {
+    versionWarned = true;
+    toast(`Backend Apps Script masih v${backend}, aplikasi v${APP_VERSION}. Fitur baru (foto Drive, Bensin, Ban) belum aktif sampai deployment diperbarui.`, 'error', 9000);
+  }
+}
+
 let prefetchTimer = null;
 function schedulePrefetch() {
   clearTimeout(prefetchTimer);
@@ -228,6 +244,7 @@ async function handleRoute(loc, { silent = false } = {}) {
     if (!route.public) {
       await loadBase();
       if (!isCurrent()) return;
+      warnIfBackendOutdated();
       updateHeader();
       motor = getActiveMotor();
       if (route.needsMotor && !motor) {

@@ -234,20 +234,34 @@ export async function readMany(calls) {
   return results;
 }
 
+// Backend lama (< v0.4) belum punya action "batch": jatuh ke panggilan satu per satu.
+let batchSupported = true;
+
+async function callOne(c) {
+  try {
+    return { ok: true, data: await call(c.action, c.payload) };
+  } catch (err) {
+    if (!(err instanceof ApiError) || ['NETWORK', 'TIMEOUT', 'BAD_RESPONSE', 'NO_API_URL', 'UNAUTHORIZED'].includes(err.code)) throw err;
+    return { ok: false, error: { code: err.code, message: err.message, fields: err.fields } };
+  }
+}
+
 async function runBatch(list) {
   const gen = generation;
   const all = [];
   for (let s = 0; s < list.length; s += BATCH_MAX) {
     const chunk = list.slice(s, s + BATCH_MAX);
-    let out;
-    if (chunk.length === 1) {
-      try { out = [{ ok: true, data: await call(chunk[0].action, chunk[0].payload) }]; } catch (err) {
-        if (!(err instanceof ApiError) || ['NETWORK', 'TIMEOUT', 'BAD_RESPONSE', 'NO_API_URL', 'UNAUTHORIZED'].includes(err.code)) throw err;
-        out = [{ ok: false, error: { code: err.code, message: err.message, fields: err.fields } }];
+    let out = null;
+    if (chunk.length > 1 && batchSupported) {
+      try {
+        out = await call('batch', { calls: chunk.map((c) => ({ action: c.action, payload: c.payload })) });
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.code !== 'UNKNOWN_ACTION') throw err;
+        batchSupported = false;
+        console.warn('Backend belum mendukung action "batch" (versi lama). Memakai panggilan terpisah.');
       }
-    } else {
-      out = await call('batch', { calls: chunk.map((c) => ({ action: c.action, payload: c.payload })) });
     }
+    if (!out) out = await Promise.all(chunk.map(callOne));
     all.push(...out);
   }
   const changed = new Set();

@@ -60,6 +60,10 @@ export async function loadMotors() {
   return cache.motors;
 }
 
+export function getBackendVersion() {
+  return cache.backendVersion || '';
+}
+
 export function getMotors() {
   return cache.motors || [];
 }
