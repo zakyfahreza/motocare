@@ -126,6 +126,17 @@ Selanjutnya setiap push ke `main`:
 > `CLASPRC_JSON` berisi refresh token akun Google Anda. Jangan bagikan. Jika bocor, jalankan `npx clasp logout`,
 > cabut akses "clasp" di https://myaccount.google.com/permissions, lalu login ulang dan perbarui secret.
 
+### Alternatif: deploy frontend ke Vercel
+
+`vercel.json` sudah disiapkan (output folder `frontend`, build `node scripts/write-config.js`).
+1. Push repo ke GitHub, lalu di https://vercel.com → **Add New → Project** → impor repo.
+2. Framework Preset **Other**, Root Directory `./`. Build & Output otomatis terbaca dari `vercel.json`.
+3. **Environment Variables**: `MOTOCARE_API_URL` = URL `/exec` web app Apps Script.
+4. **Deploy**. Setiap push ke `main` otomatis deploy ulang. Setelah mengubah env var, lakukan **Redeploy**.
+
+Backend tetap di Apps Script (langkah 4–5, atau workflow `deploy-backend.yml`). Jika hanya memakai Vercel,
+nonaktifkan workflow *Deploy frontend (GitHub Pages)* di tab Actions.
+
 ## 7. Pakai aplikasi
 
 1. Buka URL GitHub Pages di HP, masukkan API_TOKEN. Tambahkan ke layar utama lewat menu browser agar terasa seperti aplikasi.
