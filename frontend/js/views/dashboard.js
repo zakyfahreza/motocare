@@ -3,6 +3,7 @@ import { call } from '../api.js';
 import { formatKm, formatRupiah, formatDate, formatTimestamp, describeReminder, TYPE_LABELS } from '../utils/format.js';
 import { pageHead, statusBadge, typeBadge, toast } from '../ui/components.js';
 import { openOdometerDialog } from './motors.js';
+import { icon } from '../ui/icons.js';
 
 const MAX_REMINDERS = 6;
 
@@ -26,9 +27,9 @@ export async function render({ motor, mount, refresh }) {
   );
 
   const quick = h('div', { class: 'quick-actions' },
-    h('a', { class: 'btn', href: '#/records/new?type=GANTI_OLI' }, h('span', { 'aria-hidden': 'true' }, '🛢'), 'Ganti Oli'),
-    h('a', { class: 'btn', href: '#/records/new?type=SERVIS' }, h('span', { 'aria-hidden': 'true' }, '🔧'), 'Servis'),
-    h('a', { class: 'btn', href: '#/records/new?type=BELANJA_PART' }, h('span', { 'aria-hidden': 'true' }, '🛒'), 'Belanja Part'),
+    h('a', { class: 'btn', href: '#/records/new?type=GANTI_OLI' }, h('span', { class: 'qa-icon' }, icon('oil')), 'Ganti Oli'),
+    h('a', { class: 'btn', href: '#/records/new?type=SERVIS' }, h('span', { class: 'qa-icon' }, icon('wrench')), 'Servis'),
+    h('a', { class: 'btn', href: '#/records/new?type=BELANJA_PART' }, h('span', { class: 'qa-icon' }, icon('cart')), 'Belanja Part'),
   );
 
   const reminders = data.reminders.slice(0, MAX_REMINDERS);
@@ -83,6 +84,8 @@ export async function render({ motor, mount, refresh }) {
     pageHead(m.name),
     odoCard,
     quick,
-    h('div', { class: 'grid grid-2' }, remCard, h('div', null, spendCard, lastCard)),
+    remCard,
+    spendCard,
+    lastCard,
   );
 }

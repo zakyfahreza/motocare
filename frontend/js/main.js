@@ -2,7 +2,7 @@ import { h, mount as mountEl } from './utils/dom.js';
 import { formatKm } from './utils/format.js';
 import { startRouter, matchRoute, navigate } from './router.js';
 import { loadingView, errorState, emptyState, pageHead } from './ui/components.js';
-// pageHead dipakai oleh MoreView di bawah.
+import { icon } from './ui/icons.js';
 import { getToken, loadMotors, loadSettings, getMotors, getActiveMotor, setActiveMotorId } from './state.js';
 
 import * as LoginView from './views/login.js';
@@ -17,14 +17,18 @@ import * as SettingsView from './views/settings.js';
 
 const MoreView = {
   async render({ mount }) {
-    const item = (href, icon, label, sub) =>
-      h('li', null, h('a', { href }, h('span', { 'aria-hidden': 'true' }, icon), h('span', null, label, h('div', { class: 'list-sub' }, sub))));
+    const item = (href, iconName, label, sub) =>
+      h('li', null, h('a', { href },
+        h('span', { class: 'menu-icon' }, icon(iconName, 22)),
+        h('span', { class: 'list-main' }, h('span', { class: 'list-title' }, label), h('span', { class: 'list-sub' }, sub)),
+        h('span', { class: 'menu-chevron' }, icon('chevron', 18)),
+      ));
     mount(
       pageHead('Lainnya'),
       h('div', { class: 'card' }, h('ul', { class: 'list menu-list' },
-        item('#/motors', '🏍', 'Motor', 'Tambah, ubah, pilih motor aktif'),
-        item('#/reports', '▤', 'Laporan', 'Biaya per bulan dan per kategori'),
-        item('#/settings', '⚙', 'Pengaturan', 'Kategori, versi, keluar'),
+        item('#/motors', 'motor', 'Motor', 'Tambah, ubah, pilih motor aktif'),
+        item('#/reports', 'chart', 'Laporan', 'Biaya per bulan dan per kategori'),
+        item('#/settings', 'settings', 'Pengaturan', 'Kategori, versi, keluar'),
       )),
     );
   },
