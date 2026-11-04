@@ -14,6 +14,10 @@ function getRoutes_() {
     'motors.update': { write: true, handler: MotorService.update },
     'motors.delete': { write: true, handler: MotorService.remove },
     'motors.updateOdometer': { write: true, handler: MotorService.updateOdometer },
+    'motors.overview': { handler: MotorService.overview },
+    'records.export': { handler: RecordService.exportRows },
+    'reports.summary': { handler: ReportService.summary },
+    'backup.export': { handler: BackupService.exportAll },
 
     'records.list': { handler: RecordService.list },
     'records.get': { handler: RecordService.get },

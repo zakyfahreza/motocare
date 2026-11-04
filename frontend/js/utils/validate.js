@@ -16,6 +16,17 @@ export function validateMotor(data) {
   if (data.odometerStart === null) e.odometerStart = 'Wajib diisi';
   else if (Number.isNaN(data.odometerStart) || data.odometerStart < 0) e.odometerStart = 'Harus angka ≥ 0';
   if (data.plate.length > 15) e.plate = 'Maksimal 15 karakter';
+  if (data.brand !== undefined && data.brand.length > 30) e.brand = 'Maksimal 30 karakter';
+  const num = (key, max, label) => {
+    const val = data[key];
+    if (val === undefined || val === null) return;
+    if (Number.isNaN(val) || val < 0 || val > max) e[key] = `${label} tidak valid`;
+  };
+  num('tankLiters', 100, 'Kapasitas tangki');
+  num('oilLiters', 20, 'Kapasitas oli');
+  num('engineCc', 3000, 'Kapasitas mesin');
+  if (data.engineCc === 0) e.engineCc = 'Kapasitas mesin tidak valid';
+  if (data.odometerCurrent !== undefined && data.odometerCurrent !== null && (Number.isNaN(data.odometerCurrent) || data.odometerCurrent < 0)) e.odometerCurrent = 'Harus angka ≥ 0';
   return e;
 }
 

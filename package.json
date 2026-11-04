@@ -1,6 +1,6 @@
 {
   "name": "motocare",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Catatan servis, ganti oli, dan belanja part motor (Apps Script + Google Sheets + GitHub Pages)",
   "scripts": {

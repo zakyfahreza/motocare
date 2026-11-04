@@ -33,7 +33,31 @@ var RecordService = {
     var page = filtered.slice(f.offset, f.offset + f.limit).map(function (r) {
       return RecordService.toSummary_(r, itemsByRecord[r.id] || []);
     });
-    return { items: page, total: filtered.length };
+    var sumTotal = filtered.reduce(function (s, r) { return s + (Number(r.grandTotal) || 0); }, 0);
+    return { items: page, total: filtered.length, sumTotal: sumTotal };
+  },
+
+  /** Semua catatan (sesuai filter) lengkap dengan item, untuk ekspor CSV. */
+  exportRows: function (payload) {
+    var p = {};
+    Object.keys(payload || {}).forEach(function (k) { p[k] = payload[k]; });
+    p.limit = 100;
+    p.offset = 0;
+    var first = RecordService.list(p);
+    var ordered = [];
+    var collect = function (res) { res.items.forEach(function (r) { ordered.push(r); }); };
+    collect(first);
+    while (ordered.length < first.total) {
+      p.offset = ordered.length;
+      var res = RecordService.list(p);
+      if (!res.items.length) break;
+      collect(res);
+    }
+    var itemsByRecord = RecordService.itemsByRecord_(p.motorId);
+    return ordered.map(function (r) {
+      r.items = itemsByRecord[r.id] || [];
+      return r;
+    });
   },
 
   get: function (payload) {

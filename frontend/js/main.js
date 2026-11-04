@@ -1,8 +1,9 @@
 import { h, mount as mountEl } from './utils/dom.js';
-import { formatKm } from './utils/format.js';
+import { formatNumber } from './utils/format.js';
 import { startRouter, matchRoute, navigate } from './router.js';
-import { loadingView, errorState, emptyState, pageHead } from './ui/components.js';
+import { loadingView, errorState, emptyState } from './ui/components.js';
 import { icon } from './ui/icons.js';
+import { applyTheme } from './theme.js';
 import { getToken, loadMotors, loadSettings, getMotors, getActiveMotor, setActiveMotorId } from './state.js';
 
 import * as LoginView from './views/login.js';
@@ -11,87 +12,141 @@ import * as RecordsListView from './views/records-list.js';
 import * as RecordFormView from './views/record-form.js';
 import * as RecordDetailView from './views/record-detail.js';
 import * as MotorsView from './views/motors.js';
+import * as MotorFormView from './views/motor-form.js';
 import * as RemindersView from './views/reminders.js';
 import * as ReportsView from './views/reports.js';
 import * as SettingsView from './views/settings.js';
+import * as CategoriesView from './views/categories.js';
+import * as MoreView from './views/more.js';
+import * as HelpView from './views/help.js';
 
-const MoreView = {
-  async render({ mount }) {
-    const item = (href, iconName, label, sub) =>
-      h('li', null, h('a', { href },
-        h('span', { class: 'menu-icon' }, icon(iconName, 22)),
-        h('span', { class: 'list-main' }, h('span', { class: 'list-title' }, label), h('span', { class: 'list-sub' }, sub)),
-        h('span', { class: 'menu-chevron' }, icon('chevron', 18)),
-      ));
-    mount(
-      pageHead('Lainnya'),
-      h('div', { class: 'card' }, h('ul', { class: 'list menu-list' },
-        item('#/motors', 'motor', 'Motor', 'Tambah, ubah, pilih motor aktif'),
-        item('#/reports', 'chart', 'Laporan', 'Biaya per bulan dan per kategori'),
-        item('#/settings', 'settings', 'Pengaturan', 'Kategori, versi, keluar'),
-      )),
-    );
-  },
-};
+applyTheme();
 
 const NotFoundView = {
   async render({ mount }) {
-    mount(emptyState({ icon: '🧭', title: 'Halaman tidak ditemukan', action: h('a', { class: 'btn btn-primary', href: '#/' }, 'Ke beranda') }));
+    mount(emptyState({ iconName: 'help', title: 'Halaman tidak ditemukan', action: h('a', { class: 'btn btn-primary', href: '#/' }, 'Ke beranda') }));
   },
 };
 
+/**
+ * label = subjudul di header. full = halaman layar penuh (header dengan tombol kembali, tanpa navigasi bawah).
+ */
 const routes = [
   { path: '/login', view: LoginView, public: true },
-  { path: '/', view: DashboardView, nav: 'home', needsMotor: true },
-  { path: '/records', view: RecordsListView, nav: 'records', needsMotor: true },
-  { path: '/records/new', view: RecordFormView, nav: 'new', needsMotor: true },
-  { path: '/records/:id', view: RecordDetailView, nav: 'records' },
-  { path: '/records/:id/edit', view: RecordFormView, nav: 'records' },
-  { path: '/motors', view: MotorsView, nav: 'motors' },
-  { path: '/reminders', view: RemindersView, nav: 'reminders', needsMotor: true },
-  { path: '/reports', view: ReportsView, nav: 'reports', needsMotor: true },
-  { path: '/settings', view: SettingsView, nav: 'settings' },
-  { path: '/more', view: MoreView, nav: 'more' },
+  { path: '/', view: DashboardView, nav: 'home', label: 'Beranda', needsMotor: true },
+  { path: '/records', view: RecordsListView, nav: 'records', label: 'Riwayat', needsMotor: true },
+  { path: '/records/new', view: RecordFormView, nav: 'new', needsMotor: true, full: { title: 'Tambah Catatan', back: '#/' } },
+  { path: '/records/:id', view: RecordDetailView, nav: 'records', label: 'Detail Catatan' },
+  { path: '/records/:id/edit', view: RecordFormView, nav: 'records', full: { title: 'Edit Catatan', back: '#/records' } },
+  { path: '/motors', view: MotorsView, nav: 'more', label: 'Garasi' },
+  { path: '/motors/new', view: MotorFormView, nav: 'more', full: { title: 'Tambah Motor', back: '#/motors', close: true } },
+  { path: '/motors/:id/edit', view: MotorFormView, nav: 'more', full: { title: 'Edit Motor', back: '#/motors', close: true } },
+  { path: '/reminders', view: RemindersView, nav: 'reminders', label: 'Pengingat', needsMotor: true },
+  { path: '/reports', view: ReportsView, nav: 'more', label: 'Laporan Pengeluaran', needsMotor: true },
+  { path: '/settings', view: SettingsView, nav: 'more', label: 'Pengaturan' },
+  { path: '/settings/categories', view: CategoriesView, nav: 'more', label: 'Kategori', full: { title: 'Kategori Item', back: '#/settings' } },
+  { path: '/more', view: MoreView, nav: 'more', label: 'Lainnya' },
+  { path: '/help', view: HelpView, nav: 'more', label: 'Bantuan', full: { title: 'Pusat Bantuan', back: '#/more' } },
 ];
 
 const appEl = document.getElementById('app');
 const headerEl = document.getElementById('app-header');
 const navEl = document.getElementById('app-nav');
-const motorSelect = document.getElementById('motor-select');
-const motorOdo = document.getElementById('motor-odo');
 
 let renderSeq = 0;
 let lastLocation = null;
+let currentRoute = null;
 
-function setChrome(visible, navKey) {
-  headerEl.hidden = !visible;
-  navEl.hidden = !visible;
-  appEl.classList.toggle('with-nav', visible);
-  appEl.classList.toggle('no-chrome', !visible);
-  navEl.querySelectorAll('a[data-nav]').forEach((a) => {
-    const isMore = a.dataset.nav === 'more' && ['motors', 'reports', 'settings'].includes(navKey);
-    if (a.dataset.nav === navKey || isMore) a.setAttribute('aria-current', 'page');
+// ---------- Navigasi bawah ----------
+
+function navItem(key, href, iconName, label) {
+  return h('a', { class: 'nav-item', href, dataset: { nav: key } }, icon(iconName, 24), h('span', null, label));
+}
+
+navEl.appendChild(h('div', { class: 'nav-inner' },
+  navItem('home', '#/', 'two_wheeler', 'Beranda'),
+  navItem('records', '#/records', 'history', 'Riwayat'),
+  h('a', { class: 'nav-add', href: '#/records/new', dataset: { nav: 'new' }, 'aria-label': 'Tambah catatan' },
+    h('span', { class: 'nav-add-btn' }, icon('add', 30)),
+    h('span', null, 'Tambah'),
+  ),
+  navItem('reminders', '#/reminders', 'notification_important', 'Pengingat'),
+  navItem('more', '#/more', 'more_horiz', 'Lainnya'),
+));
+
+function setNav(key) {
+  navEl.querySelectorAll('[data-nav]').forEach((a) => {
+    if (a.dataset.nav === key) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
 }
 
-export function updateHeader() {
-  const motors = getMotors();
-  const active = getActiveMotor();
-  motorSelect.replaceChildren(
-    ...(motors.length
-      ? motors.map((m) => h('option', { value: m.id, selected: active && m.id === active.id }, m.name))
-      : [h('option', { value: '' }, 'Belum ada motor')]),
-  );
-  motorSelect.disabled = motors.length <= 1;
-  motorOdo.textContent = active ? formatKm(active.odometerCurrent) : '';
+// ---------- Header ----------
+
+let internalNavs = 0;
+
+/** Kembali ke halaman sebelumnya di dalam aplikasi; jika dibuka langsung, ke fallback. */
+function goBack(fallback) {
+  if (internalNavs > 1) history.back();
+  else navigate(fallback.replace(/^#/, ''), { replace: true });
 }
 
-motorSelect.addEventListener('change', () => {
-  setActiveMotorId(motorSelect.value);
-  updateHeader();
-  rerender();
-});
+export function updateHeader() {
+  const route = currentRoute;
+  if (!route || route.public) return;
+  if (route.full) {
+    headerEl.replaceChildren(h('div', { class: 'header-bar' },
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Kembali', onclick: () => goBack(route.full.back) }, icon('arrow_back', 24)),
+      h('img', { class: 'brand-mark', src: 'assets/logo-mark.png', alt: '', width: '36', height: '36' }),
+      h('span', { class: 'page-title-center truncate' }, route.full.title),
+      route.full.close
+        ? h('a', { class: 'icon-btn', href: route.full.back, 'aria-label': 'Tutup' }, icon('close', 24))
+        : h('a', { class: 'avatar', href: '#/settings', 'aria-label': 'Pengaturan' }, icon('person', 20)),
+    ));
+    return;
+  }
+
+  const motors = getMotors();
+  const active = getActiveMotor();
+  let pill = null;
+  if (active) {
+    const select = h('select', { 'aria-label': 'Pilih motor aktif' },
+      motors.map((m) => h('option', { value: m.id, selected: m.id === active.id }, m.name)),
+    );
+    select.addEventListener('change', () => {
+      setActiveMotorId(select.value);
+      updateHeader();
+      rerender();
+    });
+    pill = h('div', { class: 'motor-pill' },
+      h('span', { class: 'motor-pill-name' }, h('span', null, active.name), icon('expand_more', 16)),
+      h('span', { class: 'motor-pill-km' }, `${formatNumber(active.odometerCurrent)} km`),
+      select,
+    );
+  }
+  headerEl.replaceChildren(h('div', { class: 'header-bar' },
+    h('a', { class: 'brand', href: '#/', 'aria-label': 'MotoCare, ke beranda' },
+      h('img', { class: 'brand-mark', src: 'assets/logo-mark.png', alt: '', width: '36', height: '36' }),
+      h('span', { class: 'brand-text' },
+        h('span', { class: 'brand-name' }, 'MotoCare'),
+        h('span', { class: 'brand-sub truncate' }, route.label || ''),
+      ),
+    ),
+    h('div', { class: 'header-actions' },
+      pill,
+      h('a', { class: 'avatar', href: '#/settings', 'aria-label': 'Pengaturan' }, icon('person', 20)),
+    ),
+  ));
+}
+
+function setChrome(route) {
+  const chrome = !route.public;
+  headerEl.hidden = !chrome;
+  navEl.hidden = !chrome || Boolean(route.full);
+  appEl.classList.toggle('no-chrome', !chrome);
+  appEl.classList.toggle('no-nav', chrome && Boolean(route.full));
+  setNav(route.nav);
+}
 
 export function rerender() {
   if (lastLocation) handleRoute(lastLocation);
@@ -108,7 +163,7 @@ async function handleRoute(loc) {
   };
 
   const matched = matchRoute(routes, loc.path);
-  const route = matched ? matched.route : { view: NotFoundView };
+  const route = matched ? matched.route : { view: NotFoundView, label: '' };
   const params = matched ? matched.params : {};
 
   if (!route.public && !getToken()) {
@@ -116,7 +171,9 @@ async function handleRoute(loc) {
     return;
   }
 
-  setChrome(!route.public, route.nav);
+  currentRoute = route;
+  setChrome(route);
+  updateHeader();
   mount(loadingView());
 
   try {
@@ -128,10 +185,10 @@ async function handleRoute(loc) {
       motor = getActiveMotor();
       if (route.needsMotor && !motor) {
         mount(emptyState({
-          icon: '🏍',
+          iconName: 'two_wheeler',
           title: 'Belum ada motor',
           text: 'Tambahkan motor pertama Anda untuk mulai mencatat servis dan belanja part.',
-          action: h('a', { class: 'btn btn-primary', href: '#/motors?add=1' }, 'Tambah motor'),
+          action: h('a', { class: 'btn btn-primary', href: '#/motors/new' }, icon('add', 20), 'Tambah motor'),
         }));
         return;
       }
@@ -150,6 +207,7 @@ async function handleRoute(loc) {
 }
 
 startRouter((loc) => {
+  internalNavs += 1;
   window.scrollTo(0, 0);
   handleRoute(loc);
 });

@@ -1,174 +1,212 @@
 import { h } from '../utils/dom.js';
 import { call } from '../api.js';
-import { formatKm, formatTimestamp } from '../utils/format.js';
-import { validateMotor } from '../utils/validate.js';
+import { formatNumber, formatTimestamp, formatKm } from '../utils/format.js';
 import {
-  pageHead, emptyState, openDialog, confirmDialog, field, numberInput, readNumber,
-  showFieldErrors, toast, toastError,
+  pageHead, emptyState, confirmDialog, toast, toastError, numberInput, readNumber, busy,
 } from '../ui/components.js';
-import { loadMotors, getActiveMotor, setActiveMotorId, invalidateMotors } from '../state.js';
+import { icon } from '../ui/icons.js';
+import { TRANSMISSION_LABELS } from '../ui/meta.js';
+import { getActiveMotor, setActiveMotorId, invalidateMotors } from '../state.js';
 import { navigate } from '../router.js';
+import { exportBackup } from './more.js';
 
-export async function render({ mount, query, refresh, updateHeader }) {
-  const motors = await loadMotors();
+function compactRupiah(n) {
+  if (n >= 1e6) return `Rp ${(n / 1e6).toFixed(1).replace('.', ',').replace(',0', '')}jt`;
+  if (n >= 1e3) return `Rp ${Math.round(n / 1e3)}rb`;
+  return `Rp ${n}`;
+}
+
+function reminderLine(stats) {
+  const top = stats.topReminder;
+  if (top) {
+    const km = top.remainingKm !== null && top.remainingKm <= 0 ? ` ${formatKm(-top.remainingKm)}` : '';
+    return { cls: top.status === 'TERLAMBAT' ? 'c-late' : 'c-soon', iconName: 'warning', text: `${top.label} ${top.status === 'TERLAMBAT' ? 'terlambat' : 'segera'}${km}` };
+  }
+  const next = stats.nextReminder;
+  if (next && next.remainingKm !== null) return { cls: 'c-primary', iconName: 'schedule', text: `${next.label} dalam ${formatKm(next.remainingKm)}` };
+  return { cls: 'c-ok', iconName: 'check_circle', text: 'Semua jadwal servis aman' };
+}
+
+export async function render({ mount, refresh }) {
+  const { motors, totals } = await call('motors.overview');
   const active = getActiveMotor();
 
   const after = (msg) => {
     toast(msg, 'success');
     invalidateMotors();
-    refresh(); // main.js memuat ulang daftar motor & header
+    refresh();
   };
 
-  const addBtn = h('button', {
-    type: 'button', class: 'btn btn-primary',
-    onclick: async () => {
-      const saved = await openMotorDialog(null);
-      if (saved) {
-        setActiveMotorId(saved.id);
-        await after('Motor ditambahkan');
-      }
-    },
-  }, '＋ Tambah motor');
-
-  const list = motors.length
-    ? h('div', { class: 'card' }, h('ul', { class: 'list' }, motors.map((m) => {
-      const isActive = active && active.id === m.id;
-      return h('li', null, h('div', { class: 'list-item' },
-        h('div', { class: 'list-main' },
-          h('div', { class: 'list-title' }, m.name, ' ', isActive && h('span', { class: 'badge badge-ok' }, 'Aktif')),
-          h('div', { class: 'list-sub' }, [m.brand, m.model, m.year].filter(Boolean).join(' ') || '—'),
-          h('div', { class: 'list-sub' }, [m.plate, formatKm(m.odometerCurrent)].filter(Boolean).join(' · ')),
-        ),
-        h('div', { class: 'list-actions' },
-          !isActive && h('button', {
-            type: 'button', class: 'btn btn-sm',
-            onclick: () => { setActiveMotorId(m.id); updateHeader(); navigate('/'); },
-          }, 'Pilih'),
-          h('button', {
-            type: 'button', class: 'btn btn-sm',
-            onclick: async () => { if (await openOdometerDialog(m)) await after('Odometer diperbarui'); },
-          }, 'Update km'),
-          h('button', {
-            type: 'button', class: 'btn btn-sm',
-            onclick: async () => { if (await openMotorDialog(m)) await after('Motor diperbarui'); },
-          }, 'Edit'),
-          h('button', {
-            type: 'button', class: 'btn btn-sm btn-danger',
-            onclick: async () => {
-              const ok = await confirmDialog(`Hapus motor "${m.name}"? Riwayat catatannya tidak akan tampil lagi.`, { okText: 'Hapus', danger: true });
-              if (!ok) return;
-              try {
-                await call('motors.delete', { id: m.id });
-                await after('Motor dihapus');
-              } catch (err) { toastError(err); }
-            },
-          }, 'Hapus'),
-        ),
-      ));
-    })))
-    : emptyState({ icon: '🏍', title: 'Belum ada motor', text: 'Tambahkan motor pertama Anda.', action: addBtn });
-
-  mount(pageHead('Motor', motors.length ? addBtn : null), list);
-
-  if (query.get('add') === '1') {
-    history.replaceState(null, '', '#/motors');
-    addBtn.click();
+  const addBtn = h('a', { class: 'btn btn-primary btn-sm', href: '#/motors/new' }, icon('add', 20), 'Tambah');
+  if (!motors.length) {
+    mount(
+      pageHead('Garasi & Motor Saya', { subtitle: 'Kelola motor, ganti motor aktif, dan atur spesifikasi.' }),
+      emptyState({ iconName: 'two_wheeler', title: 'Belum ada motor', text: 'Tambahkan motor pertama Anda.', action: h('a', { class: 'btn btn-primary', href: '#/motors/new' }, icon('add', 20), 'Tambah motor') }),
+    );
+    return;
   }
-}
 
-/** Dialog tambah/edit motor. Resolve dengan motor tersimpan atau null. */
-export async function openMotorDialog(motor) {
-  const isEdit = Boolean(motor);
-  const inputs = {
-    name: h('input', { type: 'text', maxlength: '50', required: true, value: motor ? motor.name : '', placeholder: 'contoh: Vario Harian' }),
-    brand: h('input', { type: 'text', maxlength: '30', value: motor ? motor.brand : '', placeholder: 'Honda' }),
-    model: h('input', { type: 'text', maxlength: '50', value: motor ? motor.model : '', placeholder: 'Vario 125' }),
-    year: numberInput({ value: motor ? motor.year : null, placeholder: '2022' }),
-    plate: h('input', { type: 'text', maxlength: '15', value: motor ? motor.plate : '', placeholder: 'B 1234 XYZ', autocapitalize: 'characters' }),
-    odometerStart: numberInput({ value: motor ? motor.odometerStart : null, required: true, placeholder: '0' }),
-    odometerCurrent: isEdit ? numberInput({ value: motor.odometerCurrent }) : null,
-  };
-  // Tahun tidak perlu pemisah ribuan.
-  inputs.year.addEventListener('blur', () => { inputs.year.value = inputs.year.value.replace(/\./g, ''); });
+  const activeMotor = motors.find((m) => active && m.id === active.id) || motors[0];
+  const others = motors.filter((m) => m.id !== activeMotor.id);
 
-  const form = h('form', { novalidate: true },
-    field({ label: 'Nama motor *', input: inputs.name, name: 'name' }),
-    h('div', { class: 'field-row' },
-      field({ label: 'Merk', input: inputs.brand, name: 'brand' }),
-      field({ label: 'Model', input: inputs.model, name: 'model' }),
-    ),
-    h('div', { class: 'field-row' },
-      field({ label: 'Tahun', input: inputs.year, name: 'year' }),
-      field({ label: 'Plat nomor', input: inputs.plate, name: 'plate' }),
-    ),
-    field({ label: 'Odometer awal (km) *', input: inputs.odometerStart, name: 'odometerStart', hint: 'Angka km saat motor mulai dicatat.' }),
-    isEdit && field({ label: 'Odometer terkini (km)', input: inputs.odometerCurrent, name: 'odometerCurrent', hint: 'Ubah hanya untuk koreksi salah input.' }),
-    h('div', { class: 'field-error', role: 'alert', hidden: true, dataset: { general: '1' } }),
-  );
-  form.addEventListener('submit', (e) => e.preventDefault());
-
-  let saved = null;
-  await openDialog({
-    title: isEdit ? 'Edit motor' : 'Tambah motor',
-    body: form,
-    actions: [{ label: 'Batal', value: 'cancel' }, { label: 'Simpan', value: 'save', class: 'btn-primary' }],
-    onAction: async (value) => {
-      if (value !== 'save') return true;
-      const data = {
-        name: inputs.name.value.trim(),
-        brand: inputs.brand.value.trim(),
-        model: inputs.model.value.trim(),
-        year: readNumber(inputs.year),
-        plate: inputs.plate.value.trim(),
-        odometerStart: readNumber(inputs.odometerStart),
-      };
-      if (isEdit) data.odometerCurrent = readNumber(inputs.odometerCurrent);
-      const errors = validateMotor(data);
-      if (Object.keys(errors).length) { showFieldErrors(form, errors); return false; }
-      try {
-        saved = await call(isEdit ? 'motors.update' : 'motors.create', isEdit ? { id: motor.id, ...data } : data);
-        return true;
-      } catch (err) {
-        const rest = showFieldErrors(form, err.fields || {});
-        if (!err.fields || Object.keys(rest).length) toastError(err);
-        return false;
-      }
-    },
-  });
-  return saved;
-}
-
-/** Dialog update odometer. Resolve dengan motor terbaru atau null. */
-export async function openOdometerDialog(motor) {
-  const input = numberInput({ value: null, required: true, placeholder: String(motor.odometerCurrent) });
-  const form = h('form', { novalidate: true },
-    h('p', { class: 'muted small' }, `Saat ini ${formatKm(motor.odometerCurrent)}`, motor.odometerUpdatedAt ? ` (diperbarui ${formatTimestamp(motor.odometerUpdatedAt)})` : ''),
-    field({ label: 'Odometer sekarang (km)', input, name: 'odometer' }),
-  );
-  let saved = null;
-  const submit = async () => {
-    const odometer = readNumber(input);
-    if (odometer === null || Number.isNaN(odometer)) { showFieldErrors(form, { odometer: 'Masukkan angka km' }); return false; }
-    if (odometer < motor.odometerCurrent) {
-      showFieldErrors(form, { odometer: `Minimal ${formatKm(motor.odometerCurrent)}. Untuk koreksi gunakan Edit motor.` });
-      return false;
-    }
+  const removeMotor = async (m) => {
+    const ok = await confirmDialog(`Hapus motor "${m.name}"? Riwayat catatannya tidak akan tampil lagi.`, { title: 'Hapus motor', okText: 'Hapus', danger: true });
+    if (!ok) return;
     try {
-      saved = await call('motors.updateOdometer', { id: motor.id, odometer });
-      invalidateMotors();
-      return true;
-    } catch (err) {
-      const rest = showFieldErrors(form, err.fields || {});
-      if (!err.fields || Object.keys(rest).length) toastError(err);
-      return false;
-    }
+      await call('motors.delete', { id: m.id });
+      after('Motor dihapus');
+    } catch (err) { toastError(err); }
   };
-  form.addEventListener('submit', (e) => e.preventDefault());
-  await openDialog({
-    title: 'Update odometer',
-    body: form,
-    actions: [{ label: 'Batal', value: 'cancel' }, { label: 'Simpan', value: 'save', class: 'btn-primary' }],
-    onAction: (value) => (value === 'save' ? submit() : true),
+
+  mount(
+    pageHead('Garasi & Motor Saya', { subtitle: 'Kelola motor, ganti motor aktif, dan atur spesifikasi.', actions: [addBtn] }),
+    h('div', { class: 'card stat-strip' },
+      h('div', null, h('span', { class: 't-sm c-2' }, 'Armada'), h('strong', { class: 'stack t-title c-primary' }, `${totals.count} Unit`)),
+      h('div', null, h('span', { class: 't-sm c-2' }, 'Jarak total'), h('strong', { class: 'stack t-title num' }, formatKm(totals.totalKm))),
+      h('div', null, h('span', { class: 't-sm c-2' }, 'Bulan ini'), h('strong', { class: 'stack t-title num' }, compactRupiah(totals.monthSpend))),
+    ),
+    activeCard(activeMotor, { after, removeMotor }),
+    others.length ? h('section', { class: 'stack gap-12' },
+      h('div', { class: 'row-between' },
+        h('h2', { class: 'row gap-8 t-h3' }, h('span', { class: 'c-primary' }, icon('garage_home', 22)), 'Motor Lainnya di Garasi'),
+        h('span', { class: 't-sm c-2', style: { fontWeight: '700' } }, `${others.length} tersimpan`),
+      ),
+      others.map((m) => otherCard(m)),
+    ) : null,
+    h('a', { class: 'card-soft row gap-12', href: '#/motors/new', style: { color: 'inherit' } },
+      h('span', { class: 'tile-icon round', style: { background: 'var(--card)' } }, icon('two_wheeler', 22)),
+      h('span', { class: 'stack' }, h('span', { class: 't-title' }, 'Punya motor baru?'), h('span', { class: 't-sm c-2' }, 'Tambahkan data motor untuk memisahkan pengingat servis dan rekap biaya secara otomatis.')),
+    ),
+    backupCard(totals.count),
+  );
+}
+
+function activeCard(m, { after, removeMotor }) {
+  const menu = h('div', { class: 'menu-pop', role: 'menu', hidden: true },
+    h('button', { type: 'button', role: 'menuitem', onclick: () => navigate(`/motors/${encodeURIComponent(m.id)}/edit`) }, icon('edit', 18), 'Edit motor'),
+    h('button', { type: 'button', role: 'menuitem', class: 'c-late', onclick: () => { menu.hidden = true; removeMotor(m); } }, icon('delete', 18), 'Hapus motor'),
+  );
+  const kebab = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Menu motor', 'aria-haspopup': 'menu', 'aria-expanded': 'false', style: { background: 'var(--surface-low)', borderRadius: '12px' } }, icon('more_vert', 22));
+  kebab.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    menu.hidden = !menu.hidden;
+    kebab.setAttribute('aria-expanded', String(!menu.hidden));
+    if (!menu.hidden) {
+      const close = () => { menu.hidden = true; kebab.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', close); };
+      document.addEventListener('click', close);
+    }
   });
-  return saved;
+
+  // Update km inline
+  const odoInput = numberInput({ value: m.odometerCurrent });
+  odoInput.setAttribute('aria-label', 'Odometer baru (km)');
+  const saveBtn = h('button', { type: 'button', class: 'btn btn-primary btn-sm' }, 'Simpan');
+  const odoErr = h('div', { class: 'field-error', role: 'alert', hidden: true });
+  const odoPanel = h('div', { hidden: true }, h('div', { class: 'odo-inline' }, odoInput, saveBtn), odoErr);
+  const updBtn = h('button', { type: 'button', class: 'btn btn-tonal btn-sm', onclick: () => { odoPanel.hidden = !odoPanel.hidden; if (!odoPanel.hidden) odoInput.focus(); } }, icon('speed', 18), 'Update km');
+  saveBtn.addEventListener('click', async () => {
+    const v = readNumber(odoInput);
+    odoErr.hidden = true;
+    if (v === null || Number.isNaN(v) || v < m.odometerCurrent) {
+      odoErr.textContent = `Minimal ${formatKm(m.odometerCurrent)}. Untuk koreksi gunakan menu ⋮ → Edit motor.`;
+      odoErr.hidden = false;
+      return;
+    }
+    const restore = busy(saveBtn, '…');
+    try {
+      await call('motors.updateOdometer', { id: m.id, odometer: v });
+      after('Odometer diperbarui');
+    } catch (err) { restore(); toastError(err); }
+  });
+
+  const top = m.stats.topReminder;
+  const specs = [
+    m.oilType || m.oilLiters ? ['Oli mesin', [m.oilType, m.oilLiters && `${formatNumber(m.oilLiters)} L`].filter(Boolean).join(' • ')] : null,
+    m.tireFront || m.tireRear ? ['Ukuran ban', [m.tireFront && `Depan ${m.tireFront}`, m.tireRear && `Blkg ${m.tireRear}`].filter(Boolean).join(' • ')] : null,
+    m.stats.lastOilName ? ['Oli terakhir', m.stats.lastOilName] : null,
+    m.engineCc ? ['Mesin', `${m.engineCc} cc${m.transmission ? ` • ${TRANSMISSION_LABELS[m.transmission]}` : ''}`] : null,
+  ].filter(Boolean).slice(0, 2);
+  const subtitle = [m.year && `Tahun ${m.year}`, [m.transmission && TRANSMISSION_LABELS[m.transmission], m.engineCc && `${m.engineCc}cc`].filter(Boolean).join(' ')].filter(Boolean).join(' • ');
+
+  return h('article', { class: 'card', 'aria-label': `Motor aktif ${m.name}` },
+    h('div', { class: 'card-pad' },
+      h('div', { class: 'row-between', style: { alignItems: 'flex-start' } },
+        h('div', { class: 'stack' },
+          h('div', { class: 'row gap-8' }, h('span', { class: 'badge badge-ok badge-dot' }, 'Motor aktif'), m.plate && h('span', { class: 'badge' }, m.plate)),
+          h('span', { class: 't-h2 mt-8' }, [m.brand, m.model].filter(Boolean).join(' ') || m.name),
+          h('span', { class: 't-sm c-2' }, [m.name !== m.model ? m.name : null, subtitle].filter(Boolean).join(' · ')),
+        ),
+        h('div', { class: 'kebab' }, kebab, menu),
+      ),
+      h('div', { class: 'motor-photo mt-12', 'aria-hidden': 'true' },
+        icon('two_wheeler', 72),
+        m.tankLiters ? h('span', { class: 'photo-chip' }, icon('local_gas_station', 14), `Tangki: ${formatNumber(m.tankLiters)} Liter`) : null,
+      ),
+      h('div', { class: 'card mt-12', style: { padding: '12px', boxShadow: 'none' } },
+        h('div', { class: 'row-between' },
+          h('div', { class: 'stack' },
+            h('span', { class: 't-sm c-2', style: { fontWeight: '600' } }, 'Odometer terkini'),
+            h('span', { class: 'row gap-4', style: { alignItems: 'baseline' } }, h('span', { class: 't-stat c-primary' }, formatNumber(m.odometerCurrent)), h('span', { class: 'c-2' }, 'km')),
+            m.odometerUpdatedAt && h('span', { class: 't-sm c-2' }, `Update: ${formatTimestamp(m.odometerUpdatedAt)}`),
+          ),
+          updBtn,
+        ),
+        odoPanel,
+      ),
+    ),
+    h('div', { class: 'card-pad', style: { background: 'var(--surface-low)', borderRadius: '0 0 16px 16px' } },
+      top && h('div', { class: ['alert-row', top.status === 'SEGERA' && 'soon'] },
+        icon('warning', 22),
+        h('div', { class: 'stack grow' },
+          h('span', { class: 't-label' }, `${top.label} • ${top.status === 'TERLAMBAT' ? 'Terlambat' : 'Segera'}${top.remainingKm !== null && top.remainingKm <= 0 ? ` ${formatKm(-top.remainingKm)}` : ''}`),
+          m.oilType && top.category === 'OLI_MESIN' ? h('span', { class: 't-sm' }, `Rekomendasi: ${m.oilType}`) : null,
+        ),
+        h('a', { class: 'btn btn-sm', href: `#/records/new?category=${encodeURIComponent(top.category)}`, style: { background: 'var(--card)', color: 'var(--late)' } }, 'Servis'),
+      ),
+      specs.length ? h('div', { class: ['spec-grid', top && 'mt-12'] }, specs.map(([k, v]) => h('div', { class: 'spec', style: { background: 'var(--card)' } }, h('span', { class: 't-sm' }, k), h('strong', null, v)))) : null,
+      h('a', { class: ['btn btn-tonal btn-block', (top || specs.length) && 'mt-12'], href: `#/motors/${encodeURIComponent(m.id)}/edit` }, icon('tune', 20), 'Edit rincian spesifikasi'),
+    ),
+  );
+}
+
+function otherCard(m) {
+  const line = reminderLine(m.stats);
+  return h('article', { class: 'card card-pad', 'aria-label': m.name },
+    h('div', { class: 'row gap-12', style: { alignItems: 'flex-start' } },
+      h('span', { class: 'motor-thumb', 'aria-hidden': 'true' }, icon('two_wheeler', 36)),
+      h('div', { class: 'stack grow' },
+        h('div', { class: 'row-between' }, h('span', { class: 't-sm c-2', style: { fontWeight: '700' } }, m.plate || '—'), h('span', { class: 'badge' }, 'Standby')),
+        h('span', { class: 't-title', style: { fontSize: '16px' } }, [m.brand, m.model].filter(Boolean).join(' ') || m.name),
+        h('span', { class: 't-sm c-2' }, [m.name !== m.model ? m.name : null, m.year && `Tahun ${m.year}`, formatKm(m.odometerCurrent)].filter(Boolean).join(' • ')),
+        h('span', { class: ['row gap-4 t-sm mt-4', line.cls], style: { fontWeight: '700' } }, icon(line.iconName, 16), line.text),
+      ),
+    ),
+    (m.stats.lastOilName || m.tankLiters) ? h('div', { class: 'inner-box row-between mt-12' },
+      h('span', { class: 'truncate' }, m.stats.lastOilName ? `Oli terpakai: ${m.stats.lastOilName}` : 'Oli terpakai: —'),
+      m.tankLiters ? h('strong', { class: 'c-primary', style: { whiteSpace: 'nowrap' } }, `Tangki ${formatNumber(m.tankLiters)}L`) : null,
+    ) : null,
+    h('div', { class: 'row mt-12' },
+      h('button', {
+        type: 'button', class: 'btn btn-tonal grow',
+        onclick: () => { setActiveMotorId(m.id); toast(`${m.name} jadi motor aktif`, 'success'); navigate('/'); },
+      }, icon('sync_alt', 20), 'Jadikan Motor Aktif'),
+      h('a', { class: 'btn btn-outline', href: `#/motors/${encodeURIComponent(m.id)}/edit` }, 'Edit'),
+    ),
+  );
+}
+
+function backupCard(count) {
+  const btn = h('button', { type: 'button', class: 'btn btn-tonal btn-sm' }, 'Ekspor');
+  btn.addEventListener('click', async () => {
+    const restore = busy(btn, '…');
+    try {
+      await exportBackup();
+      toast('File cadangan diunduh', 'success');
+    } catch (err) { toastError(err); } finally { restore(); }
+  });
+  return h('div', { class: 'card card-pad row gap-12' },
+    h('span', { class: 'tile-icon' }, icon('backup', 22)),
+    h('div', { class: 'stack grow' }, h('span', { class: 't-title' }, 'Cadangkan & Ekspor Data Garasi'), h('span', { class: 't-sm c-2' }, `Simpan spesifikasi & log ${count} motor (JSON)`)),
+    btn,
+  );
 }

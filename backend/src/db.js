@@ -44,6 +44,10 @@ var Db = (function () {
         return isNaN(n) ? null : n;
       case 'number':
         return value === '' || value === null ? 0 : Number(value) || 0;
+      case 'numberOrNull':
+        if (value === '' || value === null) return null;
+        var f = Number(value);
+        return isNaN(f) ? null : f;
       case 'bool':
         return value === true || value === 'TRUE' || value === 'true';
       default:
@@ -60,6 +64,7 @@ var Db = (function () {
       case 'int':
       case 'intOrNull':
       case 'number':
+      case 'numberOrNull':
         return Number(value);
       case 'bool':
         return value === true;
@@ -81,6 +86,20 @@ var Db = (function () {
 
     var values = sheet.getDataRange().getValues();
     var headers = (values[0] || []).map(function (h) { return String(h).trim(); });
+    if (headers.join('') === '') headers = [];
+
+    // Migrasi otomatis: kolom baru di SCHEMA ditambahkan di ujung kanan agar tidak ada data yang hilang saat ditulis.
+    var missing = Object.keys(schema).filter(function (k) { return headers.indexOf(k) === -1; });
+    if (missing.length) {
+      sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+      missing.forEach(function (k, idx) {
+        if (schema[k] === 'string') {
+          sheet.getRange(1, headers.length + idx + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+        }
+      });
+      headers = headers.concat(missing);
+    }
+
     var rows = [];
     for (var i = 1; i < values.length; i++) {
       var raw = values[i];
@@ -89,10 +108,14 @@ var Db = (function () {
       for (var j = 0; j < headers.length; j++) {
         var h = headers[j];
         if (!h || !schema.hasOwnProperty(h)) continue;
-        if (raw[j] !== '' && raw[j] !== null) isEmpty = false;
-        obj[h] = fromCell(raw[j], schema[h], h);
+        var cell = raw[j] === undefined ? '' : raw[j];
+        if (cell !== '' && cell !== null) isEmpty = false;
+        obj[h] = fromCell(cell, schema[h], h);
       }
       if (isEmpty) continue;
+      Object.keys(schema).forEach(function (k) {
+        if (!obj.hasOwnProperty(k)) obj[k] = fromCell('', schema[k], k);
+      });
       rows.push({ rowNumber: i + 1, obj: obj });
     }
     memo[name] = { sheet: sheet, headers: headers, schema: schema, rows: rows };

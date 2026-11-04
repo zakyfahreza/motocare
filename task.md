@@ -20,6 +20,10 @@ Legenda: `[ ]` belum, `[x]` selesai. **KT** = kriteria terima.
 > - axe-core: 0 pelanggaran WCAG 2 AA di semua halaman; Lighthouse Accessibility halaman login = 100.
 > - `clasp show-file-status`: hanya `appsscript.json` + `src/**` yang ikut di-push.
 >
+> **Update v0.2.0 (2026-11-04) — redesain "Modern Light"**: semua layar mengikuti `stitch_redesain_web_servis_motor/`,
+> logo baru, 4 action API baru (lihat `design.md` §9). `npm test` 25 lulus, E2E 19 skenario lulus, axe-core 0 pelanggaran
+> di 12 halaman × tema terang & gelap.
+>
 > **Belum bisa diverifikasi agent** (butuh akun Google/GitHub pemilik): T0.3, T1.6, T5.4 (manual), lalu
 > T2.8 (jalankan `backend/scripts/smoke.ps1` ke URL asli), T5.1–T5.3 (workflow hijau di GitHub),
 > T6.3 (`dev_seedDummy()` + `dev_benchmark()` di Apps Script asli), T7.2 (checklist di URL GitHub Pages), T7.3.

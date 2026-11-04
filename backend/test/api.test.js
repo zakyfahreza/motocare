@@ -214,3 +214,103 @@ test('dev_seedDummy berjalan', () => {
   assert.equal(list.total, 1000);
   okData(app.call('dashboard.get', { motorId: motors[0].id }));
 });
+
+test('v2: spesifikasi motor, overview garasi, tanpa jadwal default', () => {
+  const app = setupApp();
+  const bad = app.call('motors.create', { name: 'X', odometerStart: 0, transmission: 'ROKET', tankLiters: -1 });
+  assert.equal(errCode(bad), 'VALIDATION_ERROR');
+  assert.ok(bad.error.fields.transmission && bad.error.fields.tankLiters);
+
+  const a = okData(app.call('motors.create', {
+    name: 'Vario', brand: 'Honda', model: 'Vario 160', year: 2023, plate: 'b 1 a', odometerStart: 10000,
+    transmission: 'MATIK', engineCc: 160, tankLiters: 5.5, oilLiters: 0.8, tireFront: '100/80-14', tireRear: '120/70-14', oilType: '10W-30',
+  }));
+  assert.equal(a.tankLiters, 5.5);
+  assert.equal(a.transmission, 'MATIK');
+  const b = okData(app.call('motors.create', { name: 'Beat', odometerStart: 500, createDefaultReminders: false }));
+  assert.equal(okData(app.call('reminders.list', { motorId: b.id })).length, 0);
+  assert.equal(b.tankLiters, null);
+
+  // update mempertahankan field yang dikirim
+  const upd = okData(app.call('motors.update', { id: a.id, name: 'Vario', odometerStart: 10000, transmission: 'MATIK', tankLiters: 5.5, oilLiters: 0.9, tireFront: '100/80-14' }));
+  assert.equal(upd.oilLiters, 0.9);
+  assert.equal(upd.tireRear, '');
+
+  okData(app.call('records.create', {
+    motorId: a.id, date: '2026-11-01', type: 'GANTI_OLI', odometer: 12500, serviceFee: 0,
+    items: [{ category: 'OLI_MESIN', name: 'AHM SPX2', qty: 1, unitPrice: 60000 }],
+  }));
+  const ov = okData(app.call('motors.overview', {}));
+  assert.equal(ov.totals.count, 2);
+  assert.equal(ov.totals.totalKm, 12500 + 500);
+  assert.equal(ov.totals.monthSpend, 60000);
+  const va = ov.motors.find((m) => m.id === a.id);
+  assert.equal(va.stats.lastOilName, 'AHM SPX2');
+  assert.equal(va.stats.recordCount, 1);
+  assert.equal(va.stats.nextReminder.category, 'OLI_MESIN');
+});
+
+test('v2: migrasi otomatis kolom baru pada sheet lama', () => {
+  const app = setupApp();
+  const sheet = app.spreadsheet().getSheetByName('motors');
+  // Simulasi sheet versi 1: buang kolom spesifikasi
+  const v1Cols = ['id', 'name', 'brand', 'model', 'year', 'plate', 'odometerStart', 'odometerCurrent', 'odometerUpdatedAt', 'createdAt', 'updatedAt', 'deleted'];
+  sheet.data = [v1Cols, ['m1', 'Lama', '', '', '', '', 100, 100, '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', false]];
+  const list = okData(app.call('motors.list', {}));
+  assert.equal(list[0].name, 'Lama');
+  assert.equal(list[0].tankLiters, null);
+  assert.ok(sheet.data[0].includes('tankLiters'), 'header baru ditambahkan');
+  okData(app.call('motors.update', { id: 'm1', name: 'Lama', odometerStart: 100, tankLiters: 4.2 }));
+  assert.equal(okData(app.call('motors.list', {}))[0].tankLiters, 4.2);
+});
+
+test('v2: records.list sumTotal, records.export, reports.summary, backup.export, dashboard count', () => {
+  const app = setupApp();
+  const m = okData(app.call('motors.create', { name: 'Vario', odometerStart: 10000 }));
+  const mk = (date, type, odo, fee, items) => okData(app.call('records.create', { motorId: m.id, date, type, odometer: odo, serviceFee: fee, place: 'Bengkel ' + date, items }));
+  mk('2025-05-01', 'SERVIS', 10500, 100000, []);
+  mk('2026-06-07', 'SERVIS', 16000, 45000, [{ category: 'FILTER_UDARA', name: 'Filter', qty: 1, unitPrice: 65000 }, { category: 'BUSI', name: 'Busi', qty: 1, unitPrice: 25000 }]);
+  mk('2026-08-26', 'GANTI_OLI', 17200, 0, [{ category: 'OLI_MESIN', name: 'MPX2', qty: 1, unitPrice: 55000 }, { category: 'OLI_GARDAN', name: 'Gear', qty: 1, unitPrice: 17000 }]);
+  mk('2026-10-15', 'BELANJA_PART', 18800, 0, [{ category: 'KAMPAS_REM_DEPAN', name: 'Kampas', qty: 1, unitPrice: 48000 }]);
+
+  const list = okData(app.call('records.list', { motorId: m.id, from: '2026-01-01' }));
+  assert.equal(list.total, 3);
+  assert.equal(list.sumTotal, 135000 + 72000 + 48000);
+
+  const rows = okData(app.call('records.export', { motorId: m.id }));
+  assert.equal(rows.length, 4);
+  assert.equal(rows[0].items.length, 1);
+  assert.equal(rows[1].items.length, 2);
+
+  const s = okData(app.call('reports.summary', { motorId: m.id, year: 2026 }));
+  assert.equal(s.total, 255000);
+  assert.equal(s.prevTotal, 100000);
+  assert.equal(s.changePct, 155);
+  assert.equal(s.sessions, 3);
+  assert.equal(s.months.length, 12);
+  assert.equal(s.months[5].total, 135000);
+  assert.equal(s.months[5].dominantType, 'SERVIS');
+  assert.equal(s.months[7].dominantType, 'GANTI_OLI');
+  assert.equal(s.average, Math.round(255000 / 11), 'tahun berjalan: dibagi 11 bulan (Jan–Nov)');
+  assert.equal(s.biggest.grandTotal, 135000);
+  const g = Object.fromEntries(s.groups.map((x) => [x.key, x]));
+  assert.equal(g.JASA.total, 45000);
+  assert.equal(g.FLUID.total, 72000);
+  assert.equal(g.PART.total, 65000 + 25000 + 48000);
+  assert.equal(g.PART.count, 2);
+  assert.equal(s.costPerKm.total, 355000);
+  assert.equal(s.costPerKm.km, 8800);
+  assert.equal(s.costPerKm.value, 40.34);
+  assert.equal(s.recent.length, 3);
+  assert.deepEqual(s.years, [2026, 2025]);
+
+  const dash = okData(app.call('dashboard.get', { motorId: m.id }));
+  assert.equal(dash.spend.countYear, 3);
+  assert.equal(dash.spend.countMonth, 0);
+
+  const bk = okData(app.call('backup.export', {}));
+  assert.equal(bk.app, 'motocare');
+  assert.equal(bk.records.length, 4);
+  assert.equal(bk.recordItems.length, 5);
+  assert.equal(bk.motors.length, 1);
+});

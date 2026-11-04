@@ -1,8 +1,10 @@
 import { h } from '../utils/dom.js';
 import { call } from '../api.js';
-import { formatRupiah, formatKm, formatDate, TYPE_LABELS } from '../utils/format.js';
-import { pageHead, typeBadge, emptyState, field, busy, toastError } from '../ui/components.js';
-import { loadCategories } from '../state.js';
+import { formatRupiah, formatNumber, formatDate, TYPE_LABELS, todayISO } from '../utils/format.js';
+import { pageHead, typeBadge, emptyState, field, busy, toast, toastError, downloadFile } from '../ui/components.js';
+import { icon } from '../ui/icons.js';
+import { TYPE_ICONS } from '../ui/meta.js';
+import { loadCategories, categoryLabel } from '../state.js';
 import { navigate, buildHash } from '../router.js';
 
 const PAGE_SIZE = 20;
@@ -18,8 +20,9 @@ export async function render({ motor, query, mount }) {
     loadCategories(),
     call('records.list', { motorId: motor.id, ...filters, limit: PAGE_SIZE, offset: 0 }),
   ]);
+  const activeCount = Object.values(filters).filter(Boolean).length;
 
-  // ---------- filter ----------
+  // ---------- Filter ----------
   const typeSel = h('select', null,
     h('option', { value: '' }, 'Semua jenis'),
     Object.entries(TYPE_LABELS).map(([v, label]) => h('option', { value: v, selected: v === filters.type }, label)),
@@ -31,38 +34,37 @@ export async function render({ motor, query, mount }) {
   );
   const fromInput = h('input', { type: 'date', value: filters.from });
   const toInput = h('input', { type: 'date', value: filters.to });
-  const activeCount = Object.values(filters).filter(Boolean).length;
 
-  const filterForm = h('form', null,
-    h('div', { class: 'field-row' },
+  const filterForm = h('form', { class: 'card card-pad', 'aria-labelledby': 'filter-h' },
+    h('div', { class: 'row-between', style: { marginBottom: '12px' } },
+      h('h2', { class: 'row gap-8 t-h3', id: 'filter-h' }, icon('filter_list', 22), 'Filter'),
+      activeCount ? h('span', { class: 'badge badge-sky' }, `${activeCount} aktif`) : null,
+    ),
+    h('div', { class: 'field-grid' },
       field({ label: 'Jenis', input: typeSel }),
       field({ label: 'Kategori', input: catSel }),
     ),
-    h('div', { class: 'field-row' },
+    h('div', { class: 'field-grid' },
       field({ label: 'Dari tanggal', input: fromInput }),
       field({ label: 'Sampai tanggal', input: toInput }),
     ),
-    h('div', { class: 'btn-row' },
-      h('a', { class: 'btn', href: '#/records' }, 'Reset'),
+    h('div', { class: 'row mt-16', style: { justifyContent: 'flex-end' } },
+      h('a', { class: 'btn btn-tonal', href: '#/records' }, 'Reset'),
       h('button', { type: 'submit', class: 'btn btn-primary' }, 'Terapkan'),
     ),
   );
   filterForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
-    navigate(buildHash('/records', { type: typeSel.value, category: catSel.value, from: fromInput.value, to: toInput.value }).slice(1), { replace: true });
+    navigate(buildHash('/records', { type: typeSel.value, category: catSel.value, from: fromInput.value, to: toInput.value }), { replace: true });
   });
-  const filterBox = h('details', { class: 'filters card', open: activeCount > 0 },
-    h('summary', null, activeCount ? `Filter (${activeCount} aktif)` : 'Filter'),
-    filterForm,
-  );
 
-  // ---------- daftar ----------
-  const listEl = h('ul', { class: 'list' });
-  const summaryEl = h('p', { class: 'muted small', 'aria-live': 'polite' });
+  // ---------- Daftar ----------
+  const listEl = h('div', { class: 'stack gap-12' });
+  const summaryEl = h('p', { class: 't-body c-2', 'aria-live': 'polite' });
   let loaded = 0;
   let total = first.total;
 
-  const moreBtn = h('button', { type: 'button', class: 'btn btn-block' }, 'Muat lagi');
+  const moreBtn = h('button', { type: 'button', class: 'btn btn-outline btn-block' }, 'Muat lagi');
   moreBtn.addEventListener('click', async () => {
     const restore = busy(moreBtn, 'Memuat…');
     try {
@@ -77,8 +79,22 @@ export async function render({ motor, query, mount }) {
     }
   });
 
+  const exportBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, icon('download', 18), 'Ekspor ke Excel (CSV)');
+  exportBtn.addEventListener('click', async () => {
+    const restore = busy(exportBtn, 'Menyiapkan…');
+    try {
+      const rows = await call('records.export', { motorId: motor.id, ...filters });
+      downloadFile(`motocare-${slug(motor.name)}-${todayISO()}.csv`, toCsv(rows), 'text/csv;charset=utf-8');
+      toast(`${rows.length} catatan diekspor`, 'success');
+    } catch (err) {
+      toastError(err);
+    } finally {
+      restore();
+    }
+  });
+
   function append(items) {
-    items.forEach((r) => listEl.appendChild(h('li', null, recordItem(r))));
+    items.forEach((r) => listEl.appendChild(recordCard(r)));
     loaded += items.length;
   }
 
@@ -90,28 +106,82 @@ export async function render({ motor, query, mount }) {
   append(first.items);
   updateFooter();
 
-  const addBtn = h('a', { class: 'btn btn-primary', href: '#/records/new' }, '＋ Catatan');
+  const addBtn = h('a', { class: 'btn btn-primary', href: '#/records/new' }, icon('add', 20), 'Catatan');
   const content = total === 0
     ? emptyState({
+      iconName: 'history',
       title: activeCount ? 'Tidak ada catatan yang cocok' : 'Belum ada catatan',
       text: activeCount ? 'Ubah atau reset filter.' : 'Catat servis, ganti oli, atau belanja part pertama Anda.',
-      action: activeCount ? h('a', { class: 'btn', href: '#/records' }, 'Reset filter') : addBtn,
+      action: activeCount ? h('a', { class: 'btn btn-tonal', href: '#/records' }, 'Reset filter') : h('a', { class: 'btn btn-primary', href: '#/records/new' }, icon('add', 20), 'Catatan baru'),
     })
-    : h('div', { class: 'card' }, listEl, summaryEl, moreBtn);
+    : h('section', { 'aria-label': 'Daftar pemeliharaan' },
+      h('div', { class: 'row-between', style: { padding: '0 4px 10px' } },
+        h('span', { class: 'section-label', style: { padding: 0 } }, 'Daftar pemeliharaan'),
+        h('span', { class: 't-label c-primary', style: { fontWeight: '700' } }, `Total: ${formatRupiah(first.sumTotal)}`),
+      ),
+      listEl,
+      h('div', { class: 'stack mt-16', style: { alignItems: 'center', textAlign: 'center', gap: '8px' } },
+        h('span', { class: 'load-more-line', 'aria-hidden': 'true' }),
+        moreBtn,
+        summaryEl,
+        exportBtn,
+      ),
+    );
 
-  mount(pageHead('Riwayat', total ? addBtn : null), filterBox, content);
+  mount(pageHead('Riwayat', { subtitle: 'Log perawatan & pembukuan motor', actions: [addBtn] }), filterForm, content);
 }
 
-function recordItem(r) {
-  const sub = [formatKm(r.odometer), r.place].filter(Boolean).join(' · ');
-  return h('a', { class: 'list-item', href: `#/records/${encodeURIComponent(r.id)}` },
-    h('div', { class: 'list-main' },
-      h('div', { class: 'list-title' }, formatDate(r.date), ' ', typeBadge(r.type)),
-      h('div', { class: 'list-sub' }, sub),
-      r.itemNames && r.itemNames.length
-        ? h('div', { class: 'list-sub' }, r.itemNames.join(', ') + (r.itemCount > r.itemNames.length ? ` +${r.itemCount - r.itemNames.length}` : ''))
-        : null,
+function recordCard(r) {
+  const title = r.itemNames && r.itemNames.length
+    ? r.itemNames.join(', ') + (r.itemCount > r.itemNames.length ? ` +${r.itemCount - r.itemNames.length}` : '')
+    : (r.type === 'SERVIS' ? 'Jasa servis' : TYPE_LABELS[r.type]);
+  const noteLine = (r.notes || '').split('\n')[0].trim();
+  return h('a', { class: 'card record-card', href: `#/records/${encodeURIComponent(r.id)}` },
+    h('div', { class: 'row-between' },
+      h('div', { class: 'row gap-8' }, h('span', { class: 'c-primary' }, icon(TYPE_ICONS[r.type] || 'receipt_long', 22)), h('span', { class: 't-h3' }, formatDate(r.date))),
+      typeBadge(r.type),
     ),
-    h('div', { class: 'list-side' }, h('strong', null, formatRupiah(r.grandTotal))),
+    h('div', { class: 'meta mt-8' },
+      icon('speed', 18), h('span', { class: 'num' }, `${formatNumber(r.odometer)} km`),
+      r.place && [h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), icon('storefront', 18), h('span', null, r.place)],
+    ),
+    h('div', { class: 'row-between mt-12', style: { alignItems: 'flex-end' } },
+      h('div', { class: 'stack grow' },
+        h('span', { class: 't-body truncate', style: { fontSize: '15px' } }, title),
+        noteLine
+          ? h('span', { class: 'row gap-4 t-sm c-ok truncate', style: { fontWeight: '700' } }, icon('check_circle', 14), h('span', { class: 'truncate' }, noteLine))
+          : r.categories && r.categories.length
+            ? h('span', { class: 't-sm c-2 truncate' }, r.categories.map(categoryLabel).join(', '))
+            : null,
+      ),
+      h('span', { class: 'amount' }, formatRupiah(r.grandTotal)),
+    ),
   );
+}
+
+function slug(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'motor';
+}
+
+/** CSV (pemisah ;) agar langsung terbaca Excel berbahasa Indonesia. Satu baris per item. */
+function toCsv(rows) {
+  const esc = (v) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    const safe = /^[=+\-@]/.test(s) ? `'${s}` : s; // cegah formula injection di Excel
+    return /[";\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+  };
+  const header = ['Tanggal', 'Jenis', 'Odometer (km)', 'Tempat', 'Kategori', 'Item', 'Merk', 'Qty', 'Harga Satuan', 'Subtotal', 'Biaya Jasa', 'Total Catatan', 'Catatan'];
+  const lines = [header.map(esc).join(';')];
+  rows.forEach((r) => {
+    const base = [r.date, TYPE_LABELS[r.type] || r.type, r.odometer, r.place];
+    const tail = [r.serviceFee, r.grandTotal, r.notes];
+    if (!r.items.length) {
+      lines.push([...base, '', '', '', '', '', '', ...tail].map(esc).join(';'));
+    } else {
+      r.items.forEach((it, i) => {
+        lines.push([...base, categoryLabel(it.category), it.name, it.brand, it.qty, it.unitPrice, it.subtotal, i === 0 ? r.serviceFee : '', i === 0 ? r.grandTotal : '', i === 0 ? r.notes : ''].map(esc).join(';'));
+      });
+    }
+  });
+  return '\uFEFF' + lines.join('\r\n');
 }

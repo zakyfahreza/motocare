@@ -3,7 +3,7 @@
  * Catatan: semua file di backend/src berbagi satu scope global Apps Script.
  */
 
-var APP_VERSION = '0.1.0';
+var APP_VERSION = '0.2.0';
 var TIMEZONE = 'Asia/Jakarta';
 
 var SHEETS = {
@@ -34,6 +34,14 @@ var SCHEMA = {
     createdAt: 'string',
     updatedAt: 'string',
     deleted: 'bool',
+    // Spesifikasi (v2). setup() menambahkan kolom ini di ujung kanan sheet lama.
+    transmission: 'string',
+    engineCc: 'intOrNull',
+    tankLiters: 'numberOrNull',
+    oilLiters: 'numberOrNull',
+    tireFront: 'string',
+    tireRear: 'string',
+    oilType: 'string',
   },
   records: {
     id: 'string',
@@ -93,10 +101,13 @@ var PRIMARY_KEYS = {
 };
 
 var RECORD_TYPES = ['SERVIS', 'GANTI_OLI', 'BELANJA_PART'];
+var TRANSMISSIONS = ['MATIK', 'MANUAL', 'KOPLING', 'LISTRIK'];
+/** Kelompok laporan: kategori oli & cairan. Biaya jasa = JASA. Sisanya = suku cadang. */
+var FLUID_CATEGORIES = ['OLI_MESIN', 'OLI_GARDAN', 'MINYAK_REM', 'AIR_RADIATOR'];
 var OIL_CATEGORIES = ['OLI_MESIN', 'OLI_GARDAN'];
 var SERVICE_FEE_CATEGORY = 'JASA';
 var SERVICE_FEE_LABEL = 'Jasa Servis';
-var SCHEMA_VERSION = '1';
+var SCHEMA_VERSION = '2';
 
 var DEFAULT_CATEGORIES = [
   ['OLI_MESIN', 'Oli Mesin'],

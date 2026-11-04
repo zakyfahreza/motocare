@@ -23,6 +23,9 @@ const MIME = {
   '.json': 'application/json',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 const app = createGasContext();
@@ -40,22 +43,40 @@ function seed() {
     d.setDate(d.getDate() - days);
     return d.toISOString().slice(0, 10);
   };
-  const m = call('motors.create', { name: 'Vario Harian', brand: 'Honda', model: 'Vario 125', year: 2021, plate: 'B 1234 XYZ', odometerStart: 15000 });
-  call('motors.create', { name: 'NMAX Touring', brand: 'Yamaha', model: 'NMAX 155', year: 2023, plate: 'D 4321 ABC', odometerStart: 5000 });
+  const m = call('motors.create', {
+    name: 'Vario Harian', brand: 'Honda', model: 'Vario 160 CBS', year: 2023, plate: 'B 4091 KZX', odometerStart: 15000,
+    transmission: 'MATIK', engineCc: 160, tankLiters: 5.5, oilLiters: 0.8, tireFront: '100/80-14', tireRear: '120/70-14', oilType: 'AHM SPX2 0.8L (10W-30)',
+  });
+  const nmax = call('motors.create', {
+    name: 'Aerox Touring', brand: 'Yamaha', model: 'Aerox 155 Connected', year: 2022, plate: 'B 4192 SGH', odometerStart: 20000,
+    transmission: 'MATIK', engineCc: 155, tankLiters: 5.5, oilLiters: 1.0, oilType: 'Yamalube Matic 10W-40 (1.0L)',
+  });
+  call('motors.create', { name: 'Beat Kantor', brand: 'Honda', model: 'Beat Street', year: 2020, plate: 'D 3810 ADG', odometerStart: 38000, transmission: 'MATIK', engineCc: 110, tankLiters: 4.2 });
   call('records.create', {
     motorId: m.id, date: shift(150), type: 'SERVIS', odometer: 16000, place: 'AHASS Sudirman', serviceFee: 45000,
     items: [{ category: 'FILTER_UDARA', name: 'Filter udara Vario', brand: 'Honda', qty: 1, unitPrice: 65000 }, { category: 'BUSI', name: 'Busi NGK CPR9EA-9', brand: 'NGK', qty: 1, unitPrice: 25000 }],
+    notes: 'Penyetelan CVT & injeksi',
   });
   call('records.create', {
     motorId: m.id, date: shift(70), type: 'GANTI_OLI', odometer: 17200, place: 'Bengkel Jaya Motor', serviceFee: 0,
     items: [{ category: 'OLI_MESIN', name: 'AHM MPX2 0.8L', brand: 'AHM', qty: 1, unitPrice: 55000 }, { category: 'OLI_GARDAN', name: 'AHM Gear Oil', brand: 'AHM', qty: 1, unitPrice: 17000 }],
+    notes: 'Rutin tiap 2.000 km',
   });
   call('records.create', {
     motorId: m.id, date: shift(20), type: 'BELANJA_PART', odometer: 18800, place: 'Tokopedia',
     items: [{ category: 'KAMPAS_REM_DEPAN', name: 'Kampas rem depan', brand: 'Aspira', qty: 1, unitPrice: 48000 }],
-    notes: 'Dipasang sendiri',
+    notes: 'Suku cadang asli Honda',
+  });
+  call('records.create', {
+    motorId: m.id, date: shift(400), type: 'SERVIS', odometer: 15200, place: 'AHASS Sudirman', serviceFee: 120000,
+    items: [{ category: 'V_BELT', name: 'V-belt kit', brand: 'Honda', qty: 1, unitPrice: 190000 }],
   });
   call('motors.updateOdometer', { id: m.id, odometer: 19050 });
+  call('records.create', {
+    motorId: nmax.id, date: shift(30), type: 'GANTI_OLI', odometer: 23800, place: 'Yamaha Surya Motor',
+    items: [{ category: 'OLI_MESIN', name: 'Yamalube Matic 10W-40 (1.0L)', brand: 'Yamalube', qty: 1, unitPrice: 62000 }],
+  });
+  call('motors.updateOdometer', { id: nmax.id, odometer: 24320 });
 }
 
 if (!process.argv.includes('--empty')) seed();

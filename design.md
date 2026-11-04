@@ -519,3 +519,14 @@ backend/.clasp.json
 - 2026-11-03 — `motors.update` menerima `odometerCurrent` opsional — jalur koreksi odometer sesuai §4.6.
 - 2026-11-03 — clasp 3.x: perintah `create-script`, `push --force`, `update-deployment <id>` (pengganti `deploy -i`). Versi action: checkout@v7, setup-node@v7, configure-pages@v6, upload-pages-artifact@v5, deploy-pages@v5.
 - 2026-11-03 — Warna primer mode terang diubah ke `#c2410c` — `#d9480f` gagal kontras WCAG AA (axe-core).
+
+### v0.2.0 — Redesain "MotoCare Modern Light" (2026-11-04)
+Sumber desain: `stitch_redesain_web_servis_motor/` (9 layar + `motocare_modern_light/DESIGN.md`) dan logo `logo-motocare.png`.
+
+- **Tampilan**: seluruh CSS ditulis ulang mengikuti token DESIGN.md (biru `#004ac6`/`#2563eb`, latar `#faf8ff`, radius 16px, kolom maks 480px, navigasi bawah frosted dengan tombol ＋ di tengah). Mode gelap tetap ada sebagai pilihan di Pengaturan (desain asli hanya mode terang).
+- **Font & ikon di-host sendiri** (`frontend/assets/fonts/`, `frontend/js/ui/icons.js`) karena CSP melarang CDN. Font Plus Jakarta Sans (OFL, lihat `assets/fonts/OFL.txt`); ikon Material Symbols Outlined (Apache 2.0) sebagai path SVG.
+- **Logo**: `logo-motocare.png` diolah menjadi `assets/logo-full.png` (login), `logo-mark.png` (header), `favicon.png`, `apple-touch-icon.png`, `icon-192/512.png` (manifest PWA).
+- **Halaman baru**: `#/motors/new` & `#/motors/:id/edit` (form motor layar penuh), `#/settings/categories`, `#/help`. Form catatan & motor tampil layar penuh tanpa navigasi bawah.
+- **Data baru di sheet `motors`**: `transmission`, `engineCc`, `tankLiters`, `oilLiters`, `tireFront`, `tireRear`, `oilType`. `Db.load()` kini menambah kolom yang belum ada secara otomatis (migrasi tanpa perlu menjalankan ulang `setup()`), tipe baru `numberOrNull`.
+- **Action API baru**: `motors.overview` (garasi + statistik per motor), `records.export` (semua catatan + item untuk CSV), `reports.summary` (ringkasan tahunan, kelompok Servis & Jasa / Oli & Cairan / Suku Cadang, rata-rata per bulan, biaya per km, 3 catatan terbaru), `backup.export` (JSON semua data). `records.list` menambah `sumTotal`; `dashboard.get` menambah `spend.countMonth/countYear`; `motors.create` menerima `createDefaultReminders: false`.
+- **Elemen desain yang tidak diterapkan** karena butuh layanan yang tidak ada di arsitektur ini atau akan menampilkan data palsu: upload foto nota/motor (butuh izin Google Drive), akun pengguna/PRO/verifikasi email, notifikasi push & getar, kunci biometrik, sinkron Google Drive otomatis, pilihan bahasa, rating aplikasi, label "Standar komuter Rp 25–40/km". Diganti dengan padanan nyata: kartu "Perangkat ini", cadangan JSON manual, ekspor CSV, dan halaman bantuan.

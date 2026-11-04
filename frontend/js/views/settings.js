@@ -1,116 +1,100 @@
 import { h } from '../utils/dom.js';
-import { call } from '../api.js';
 import { APP_VERSION } from '../version.js';
-import {
-  pageHead, openDialog, confirmDialog, field, numberInput, readNumber, showFieldErrors, toast, toastError,
-} from '../ui/components.js';
-import { loadSettings, invalidateCategories, getApiUrl, signOut } from '../state.js';
+import { pageHead, confirmDialog, toast, toastError } from '../ui/components.js';
+import { icon } from '../ui/icons.js';
+import { loadSettings, getApiUrl, signOut, resetCache, getActiveMotor } from '../state.js';
+import { getTheme, setTheme } from '../theme.js';
 import { navigate } from '../router.js';
+import { exportBackup, lastBackupText } from './more.js';
 
 export async function render({ mount, refresh }) {
   const { categories, version } = await loadSettings();
-
-  const addBtn = h('button', {
-    type: 'button', class: 'btn btn-sm btn-primary',
-    onclick: async () => { if (await openCategoryDialog(null)) { invalidateCategories(); toast('Kategori ditambahkan', 'success'); refresh(); } },
-  }, '＋ Kategori');
-
-  const catList = h('ul', { class: 'list' }, categories.map((c) => h('li', null,
-    h('div', { class: 'list-item' },
-      h('div', { class: 'list-main' },
-        h('div', { class: 'list-title' }, c.label, ' ', !c.active && h('span', { class: 'badge' }, 'Nonaktif')),
-        h('div', { class: 'list-sub' }, c.code),
-      ),
-      h('button', {
-        type: 'button', class: 'btn btn-sm', 'aria-label': `Edit kategori ${c.label}`,
-        onclick: async () => { if (await openCategoryDialog(c)) { invalidateCategories(); toast('Kategori diperbarui', 'success'); refresh(); } },
-      }, 'Edit'),
-    ),
-  )));
-
-  const logoutBtn = h('button', {
-    type: 'button', class: 'btn btn-danger btn-block',
-    onclick: async () => {
-      if (!(await confirmDialog('Keluar dari perangkat ini? Kode akses akan dihapus dari perangkat.', { okText: 'Keluar', danger: true }))) return;
-      signOut();
-      navigate('/login', { replace: true });
-    },
-  }, 'Keluar');
+  const motor = getActiveMotor();
 
   const apiUrl = getApiUrl();
   const maskedUrl = apiUrl ? apiUrl.replace(/(\/s\/)(.{6}).+(.{4}\/exec)$/, '$1$2…$3') : '—';
 
+  const row = ({ iconName, title, sub, value, href, onClick, right, danger }) => {
+    const content = [
+      h('span', { class: ['tile-icon sm', danger && 'tone-late'] }, icon(iconName, 20)),
+      h('span', { class: 'stack grow' }, h('span', { class: ['t-title', danger && 'c-late'] }, title), sub && h('span', { class: 't-sm c-2' }, sub)),
+      value && h('span', { class: 'value' }, value),
+      right !== undefined ? right : (href || onClick) && h('span', { class: 'c-3' }, icon('chevron_right', 20)),
+    ];
+    if (href) return h('a', { class: 'setting-row', href }, content);
+    if (onClick) return h('button', { type: 'button', class: 'setting-row', onclick: onClick }, content);
+    return h('div', { class: 'setting-row', style: { cursor: 'default' } }, content);
+  };
+  const group = (label, ...rows) => h('section', { class: 'stack gap-8' },
+    h('h2', { class: 'section-label' }, label),
+    h('div', { class: 'card settings-group' }, rows),
+  );
+
+  // Tema
+  const theme = getTheme();
+  const themeBtn = (value, iconName, label) => h('button', {
+    type: 'button', 'aria-pressed': String(theme === value),
+    onclick: () => { setTheme(value); refresh(); },
+  }, icon(iconName, 16), label);
+  const themeSwitch = h('div', { class: 'theme-switch', role: 'group', 'aria-label': 'Tema aplikasi' }, themeBtn('light', 'light_mode', 'Terang'), themeBtn('dark', 'dark_mode', 'Gelap'));
+
+  const backupSub = lastBackupText();
+  const activeCats = categories.filter((c) => c.active).length;
+
   mount(
-    pageHead('Pengaturan'),
-    h('section', { class: 'card', 'aria-labelledby': 'set-cat' },
-      h('div', { class: 'card-head' }, h('h2', { id: 'set-cat' }, 'Kategori item'), addBtn),
-      h('p', { class: 'muted small' }, 'Kategori nonaktif tidak muncul di form, tetapi riwayat lama tetap tersimpan.'),
-      catList,
-    ),
-    h('section', { class: 'card', 'aria-labelledby': 'set-info' },
-      h('h2', { id: 'set-info' }, 'Informasi'),
-      h('dl', { class: 'kv' },
-        h('dt', null, 'Versi aplikasi'), h('dd', null, APP_VERSION),
-        h('dt', null, 'Versi backend'), h('dd', null, version || '—'),
-        h('dt', null, 'API URL'), h('dd', null, maskedUrl),
+    pageHead('Pengaturan', {
+      subtitle: 'Preferensi aplikasi, data, dan akses',
+      actions: [h('a', { class: 'tile-icon', href: '#/settings/categories', 'aria-label': 'Kelola kategori' }, icon('tune', 22))],
+    }),
+    h('section', { class: 'card card-pad' },
+      h('div', { class: 'row gap-12' },
+        h('span', { class: 'avatar', style: { width: '56px', height: '56px', position: 'relative' } }, icon('key', 26),
+          h('span', { style: { position: 'absolute', right: '-2px', bottom: '-2px', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--ok)', border: '2px solid var(--card)', display: 'grid', placeItems: 'center', color: '#fff' } }, icon('check', 12))),
+        h('div', { class: 'stack grow' },
+          h('span', { class: 'row gap-8' }, h('span', { class: 't-h3' }, 'Perangkat ini'), h('span', { class: 'badge badge-primary' }, icon('verified', 14), 'Terhubung')),
+          h('span', { class: 't-sm c-2 truncate' }, motor ? `Motor aktif: ${motor.name}` : 'Belum ada motor'),
+          h('span', { class: 'badge badge-ok mt-4', style: { alignSelf: 'flex-start' } }, 'Kode akses valid'),
+        ),
+      ),
+      h('div', { class: 'card-tint row-between mt-12', style: { padding: '10px 12px' } },
+        h('span', { class: 'row gap-8 t-sm c-2 truncate' }, icon('database', 16), 'Google Sheets via Apps Script'),
+        h('span', { class: 't-sm', style: { fontWeight: '700' } }, `Backend v${version || '—'}`),
       ),
     ),
-    h('section', { class: 'card', 'aria-labelledby': 'set-acc' },
-      h('h2', { id: 'set-acc' }, 'Akses'),
-      h('p', { class: 'muted small' }, 'Untuk mengganti kode akses, jalankan rotateToken() di editor Apps Script lalu masuk ulang.'),
-      logoutBtn,
+    group('Kendaraan & data',
+      row({ iconName: 'notifications_active', title: 'Jadwal pengingat', sub: 'Interval km & hari per kategori', href: '#/reminders' }),
+      row({ iconName: 'category', title: 'Kelola kategori item', sub: `${activeCats} kategori aktif · Oli, part, aksesoris`, href: '#/settings/categories' }),
+      row({ iconName: 'two_wheeler', title: 'Garasi motor', sub: 'Tambah, ubah, pilih motor aktif', href: '#/motors' }),
     ),
+    group('Tampilan',
+      row({ iconName: 'palette', title: 'Tema aplikasi', sub: theme === 'dark' ? 'Gelap, nyaman di malam hari' : 'Biru cerah, mudah dibaca siang hari', right: themeSwitch }),
+      row({ iconName: 'straighten', title: 'Satuan & mata uang', sub: 'Kilometer (km) · Rupiah (IDR)', right: null }),
+    ),
+    group('Data & keamanan',
+      row({
+        iconName: 'backup', title: 'Cadangkan data', sub: backupSub,
+        onClick: async (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          try { await exportBackup(); toast('File cadangan diunduh', 'success'); refresh(); } catch (err) { toastError(err); } finally { btn.disabled = false; }
+        },
+      }),
+      row({ iconName: 'description', title: 'Ekspor riwayat (CSV)', sub: 'Buka di Excel atau Google Sheets', href: '#/records' }),
+      row({ iconName: 'cleaning_services', title: 'Muat ulang data', sub: 'Hapus cache di perangkat ini lalu ambil data terbaru', onClick: () => { resetCache(); toast('Cache dibersihkan', 'success'); refresh(); } }),
+    ),
+    group('Info aplikasi & bantuan',
+      row({ iconName: 'help_center', title: 'Pusat bantuan & FAQ', href: '#/help' }),
+      row({ iconName: 'info', title: 'Versi aplikasi', value: `MotoCare v${APP_VERSION}`, right: null }),
+      row({ iconName: 'link', title: 'API URL', value: maskedUrl, right: null }),
+    ),
+    h('button', {
+      type: 'button', class: 'btn btn-danger btn-block btn-lg',
+      onclick: async () => {
+        if (!(await confirmDialog('Keluar dari perangkat ini? Kode akses akan dihapus dari perangkat.', { title: 'Keluar', okText: 'Keluar', danger: true }))) return;
+        signOut();
+        navigate('/login', { replace: true });
+      },
+    }, icon('logout', 20), 'Keluar dari perangkat'),
+    h('p', { class: 'footer-note' }, 'Dirawat dengan cinta untuk komuter & pencinta roda dua Indonesia'),
   );
-}
-
-async function openCategoryDialog(cat) {
-  const isEdit = Boolean(cat);
-  const codeInput = h('input', {
-    type: 'text', maxlength: '30', required: true, value: cat ? cat.code : '', disabled: isEdit,
-    placeholder: 'SHOCK_DEPAN', autocapitalize: 'characters', spellcheck: 'false',
-  });
-  codeInput.addEventListener('input', () => {
-    codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-  });
-  const labelInput = h('input', { type: 'text', maxlength: '50', required: true, value: cat ? cat.label : '', placeholder: 'Shock Depan' });
-  const orderInput = numberInput({ value: cat ? cat.sortOrder : null, placeholder: 'otomatis' });
-  const activeInput = h('input', { type: 'checkbox', id: 'cat-active', checked: cat ? cat.active : true });
-
-  const form = h('form', { novalidate: true },
-    field({ label: 'Kode', input: codeInput, name: 'code', hint: isEdit ? 'Kode tidak bisa diubah.' : 'Huruf besar, angka, garis bawah.' }),
-    field({ label: 'Nama tampilan', input: labelInput, name: 'label' }),
-    field({ label: 'Urutan', input: orderInput, name: 'sortOrder' }),
-    h('label', { class: 'check', for: 'cat-active' }, activeInput, 'Aktif'),
-  );
-
-  let saved = null;
-  await openDialog({
-    title: isEdit ? 'Edit kategori' : 'Tambah kategori',
-    body: form,
-    actions: [{ label: 'Batal', value: 'cancel' }, { label: 'Simpan', value: 'save', class: 'btn-primary' }],
-    onAction: async (value) => {
-      if (value !== 'save') return true;
-      const data = {
-        code: codeInput.value.trim(),
-        label: labelInput.value.trim(),
-        sortOrder: readNumber(orderInput),
-        active: activeInput.checked,
-      };
-      const errors = {};
-      if (!/^[A-Z][A-Z0-9_]{1,29}$/.test(data.code)) errors.code = 'Minimal 2 karakter, diawali huruf (A-Z, 0-9, _)';
-      if (data.code === 'JASA') errors.code = 'Kode JASA dipakai sistem';
-      if (!data.label) errors.label = 'Wajib diisi';
-      if (Number.isNaN(data.sortOrder)) errors.sortOrder = 'Harus angka';
-      if (Object.keys(errors).length) { showFieldErrors(form, errors); return false; }
-      try {
-        saved = await call('settings.saveCategory', data);
-        return true;
-      } catch (err) {
-        const rest = showFieldErrors(form, err.fields || {});
-        if (!err.fields || Object.keys(rest).length) toastError(err);
-        return false;
-      }
-    },
-  });
-  return saved;
 }

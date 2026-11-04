@@ -134,6 +134,11 @@ Selanjutnya setiap push ke `main`:
 4. Beranda menampilkan status pengingat: **OK**, **Segera** (sisa ≤ 10% interval km atau ≤ 7 hari), **Terlambat**.
 5. Perbarui odometer kapan saja lewat tombol **Update km** agar pengingat akurat.
 
+6. **Garasi** (Lainnya → Motor) menampilkan semua motor, spesifikasi (tangki, oli, ban), dan pengingat paling mendesak per motor.
+7. **Laporan** menampilkan total biaya per tahun, perbandingan dengan tahun lalu, grafik bulanan, kelompok biaya, dan biaya per km.
+8. **Cadangan & ekspor**: Lainnya → Cadangkan Data (file JSON), atau Riwayat/Laporan → Ekspor (CSV untuk Excel).
+9. **Tema** terang/gelap bisa diganti di Pengaturan.
+
 Data juga bisa dilihat langsung di spreadsheet "MotoCare DB". Hapus di aplikasi hanya menandai `deleted = TRUE`,
 datanya tidak hilang. Hindari mengubah baris header (baris 1) di spreadsheet.
 
@@ -144,6 +149,7 @@ datanya tidak hilang. Hindari mengubah baris header (baris 1) di spreadsheet.
 - **Tambah kategori**: aplikasi → Lainnya → Pengaturan → ＋ Kategori.
 - **Update kode backend manual** (tanpa GitHub Actions): `Push-Location backend; npx clasp push --force; npx clasp update-deployment DEPLOYMENT_ID; Pop-Location`.
   Tanpa `update-deployment`, web app tetap menjalankan versi lama.
+- **Update dari versi lama**: kolom baru di spreadsheet (misalnya spesifikasi motor di v0.2) ditambahkan otomatis saat aplikasi pertama kali membaca sheet. `setup()` tidak perlu dijalankan ulang.
 - **Uji performa** (opsional): jalankan `dev_seedDummy()` lalu `dev_benchmark()` di editor Apps Script. Hapus motor "Motor Uji" setelahnya.
 
 ## 9. Troubleshooting
