@@ -11,6 +11,7 @@ var BackupService = {
       recordItems: Db.all(SHEETS.ITEMS),
       reminders: Db.all(SHEETS.REMINDERS),
       categories: Db.all(SHEETS.CATEGORIES),
+      motorPhotos: PhotoService.get({}),
     };
   },
 };

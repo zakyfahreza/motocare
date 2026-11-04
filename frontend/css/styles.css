@@ -628,3 +628,37 @@ tfoot td { font-weight: 800; border-bottom: 0; }
 /* Penyesuaian kontras mode gelap (WCAG AA) */
 :root[data-theme="dark"] .segmented.light input:checked + label { background: var(--surface-high); color: var(--text); }
 :root[data-theme="dark"] .avatar.avatar-lg { background: var(--primary-fixed); color: var(--on-primary-fixed); }
+
+/* ============ Foto motor (v0.3) ============ */
+.photo-picker {
+  position: relative; height: 200px; border-radius: var(--r-lg); overflow: hidden;
+  background: var(--surface-low); border: 1.5px dashed var(--primary-ring);
+}
+.photo-picker.has-photo { border: 0; background: #0f172a; }
+.photo-picker > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.photo-empty { position: absolute; inset: 0 0 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; color: var(--text-2); padding: 0 16px; }
+.photo-empty-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--card); color: var(--primary); box-shadow: var(--shadow-1); margin-bottom: 4px; }
+.photo-actions { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 8px; padding: 10px; }
+.photo-picker.has-photo .photo-actions { background: linear-gradient(transparent, rgba(15, 23, 42, .7)); }
+.photo-btn { background: var(--card); color: var(--text); box-shadow: var(--shadow-1); }
+.photo-btn:hover { background: var(--surface-low); }
+.photo-btn.c-late { color: var(--late); }
+.photo-spinner { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--card) 70%, transparent); }
+.photo-spinner .spinner { margin: 0; }
+.photo-picker.is-busy .photo-spinner { display: grid; }
+
+.motor-photo > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.motor-photo.has-photo { height: 180px; }
+.motor-photo .photo-edit {
+  position: absolute; top: 10px; right: 10px; z-index: 1;
+  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 10px;
+  border: 0; border-radius: 10px; cursor: pointer;
+  background: rgba(15, 23, 42, .6); color: #fff; font-size: 12px; font-weight: 700;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.motor-photo .photo-edit:hover { background: rgba(15, 23, 42, .8); }
+.motor-photo .photo-chip { z-index: 1; }
+.motor-photo.is-busy::after { content: ''; position: absolute; inset: 0; background: rgba(15, 23, 42, .45); }
+.motor-thumb { position: relative; overflow: hidden; }
+.motor-thumb > img, .tile-icon > img.photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile-icon.has-photo { position: relative; overflow: hidden; }

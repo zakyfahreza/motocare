@@ -5,12 +5,17 @@ import { statusBadge, typeBadge, toast, toastError, sectionHead, numberInput, re
 import { icon } from '../ui/icons.js';
 import { categoryIcon, STATUS_TONES, TYPE_ICONS, TYPE_TONES, TRANSMISSION_LABELS } from '../ui/meta.js';
 import { invalidateMotors } from '../state.js';
+import { loadPhotos } from '../photos.js';
 
 const MAX_REMINDERS = 6;
 
 export async function render({ motor, mount, refresh }) {
-  const data = await call('dashboard.get', { motorId: motor.id });
+  const [data, photos] = await Promise.all([
+    call('dashboard.get', { motorId: motor.id }),
+    loadPhotos([motor]).catch(() => ({})),
+  ]);
   const m = data.motor;
+  const photoUrl = photos[m.id];
 
   // ---------- Hero motor + odometer ----------
   const odoInput = numberInput({ value: m.odometerCurrent, placeholder: 'Masukkan km' });
@@ -62,7 +67,8 @@ export async function render({ motor, mount, refresh }) {
         h('h2', { class: 't-h2 mt-4', id: 'hero-name' }, m.name),
         subtitle && h('span', { class: 't-sm c-2' }, subtitle),
       ),
-      h('a', { class: 'tile-icon lg', href: '#/motors', 'aria-label': 'Buka garasi' }, icon('two_wheeler', 26)),
+      h('a', { class: ['tile-icon lg', photoUrl && 'has-photo'], href: '#/motors', 'aria-label': 'Buka garasi' },
+        photoUrl ? h('img', { class: 'photo', src: photoUrl, alt: '' }) : icon('two_wheeler', 26)),
     ),
     h('div', { class: 'hero-odo' },
       h('div', { class: 'stack' },

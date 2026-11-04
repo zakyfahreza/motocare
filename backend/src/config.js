@@ -3,7 +3,7 @@
  * Catatan: semua file di backend/src berbagi satu scope global Apps Script.
  */
 
-var APP_VERSION = '0.2.0';
+var APP_VERSION = '0.3.0';
 var TIMEZONE = 'Asia/Jakarta';
 
 var SHEETS = {
@@ -13,7 +13,16 @@ var SHEETS = {
   REMINDERS: 'reminders',
   CATEGORIES: 'categories',
   META: 'meta',
+  PHOTOS: 'motor_photos',
 };
+
+/**
+ * Foto motor disimpan sebagai data URL (JPEG terkompresi dari HP) dipecah ke beberapa sel,
+ * karena satu sel Google Sheets maksimal 50.000 karakter. Tidak butuh izin Google Drive.
+ */
+var PHOTO_CHUNK = 40000;
+var PHOTO_PARTS = 6;
+var PHOTO_MAX_CHARS = PHOTO_CHUNK * PHOTO_PARTS;
 
 /**
  * Skema tiap sheet. Urutan key = urutan kolom saat setup().
@@ -42,6 +51,8 @@ var SCHEMA = {
     tireFront: 'string',
     tireRear: 'string',
     oilType: 'string',
+    // v0.3: penanda versi foto (kosong = tanpa foto). Datanya di sheet motor_photos.
+    photoUpdatedAt: 'string',
   },
   records: {
     id: 'string',
@@ -92,12 +103,27 @@ var SCHEMA = {
     key: 'string',
     value: 'string',
   },
+  motor_photos: {
+    motorId: 'string',
+    mime: 'string',
+    chars: 'int',
+    part1: 'string',
+    part2: 'string',
+    part3: 'string',
+    part4: 'string',
+    part5: 'string',
+    part6: 'string',
+    createdAt: 'string',
+    updatedAt: 'string',
+    deleted: 'bool',
+  },
 };
 
 /** Primary key per sheet (default: id). */
 var PRIMARY_KEYS = {
   categories: 'code',
   meta: 'key',
+  motor_photos: 'motorId',
 };
 
 var RECORD_TYPES = ['SERVIS', 'GANTI_OLI', 'BELANJA_PART'];
@@ -107,7 +133,7 @@ var FLUID_CATEGORIES = ['OLI_MESIN', 'OLI_GARDAN', 'MINYAK_REM', 'AIR_RADIATOR']
 var OIL_CATEGORIES = ['OLI_MESIN', 'OLI_GARDAN'];
 var SERVICE_FEE_CATEGORY = 'JASA';
 var SERVICE_FEE_LABEL = 'Jasa Servis';
-var SCHEMA_VERSION = '2';
+var SCHEMA_VERSION = '3';
 
 var DEFAULT_CATEGORIES = [
   ['OLI_MESIN', 'Oli Mesin'],

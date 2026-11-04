@@ -82,7 +82,11 @@ var Db = (function () {
     var schema = SCHEMA[name];
     if (!schema) throw new Error('Sheet tidak dikenal: ' + name);
     var sheet = getSpreadsheet().getSheetByName(name);
-    if (!sheet) throw new AppError('INTERNAL_ERROR', 'Sheet "' + name + '" tidak ada. Jalankan setup().');
+    // Migrasi otomatis: sheet baru (misalnya motor_photos di v0.3) dibuat saat pertama kali dipakai.
+    if (!sheet) {
+      sheet = getSpreadsheet().insertSheet(name);
+      sheet.setFrozenRows(1);
+    }
 
     var values = sheet.getDataRange().getValues();
     var headers = (values[0] || []).map(function (h) { return String(h).trim(); });
@@ -217,6 +221,29 @@ var Db = (function () {
     return update(name, pkValue, { deleted: true });
   }
 
+  /**
+   * Tulis ulang baris dengan primary key tertentu (termasuk baris yang sudah dihapus), atau sisipkan jika belum ada.
+   * Dipakai untuk data 1-per-entitas seperti foto motor agar sheet tidak terus bertambah.
+   */
+  function upsert(name, pkValue, obj) {
+    var table = load(name);
+    var row = findRow(name, String(pkValue));
+    if (!row) {
+      var fresh = {};
+      Object.keys(obj).forEach(function (k) { fresh[k] = obj[k]; });
+      fresh[pkOf(name)] = String(pkValue);
+      return insert(name, fresh);
+    }
+    Object.keys(table.schema).forEach(function (k) {
+      if (k === pkOf(name) || k === 'createdAt') return;
+      if (obj.hasOwnProperty(k)) row.obj[k] = obj[k];
+    });
+    if (table.schema.hasOwnProperty('deleted')) row.obj.deleted = obj.deleted === true;
+    if (table.schema.hasOwnProperty('updatedAt')) row.obj.updatedAt = nowISO_();
+    writeRow(table, row);
+    return copy(row.obj);
+  }
+
   /** Soft delete semua baris aktif yang cocok dengan predicate. Mengembalikan jumlah baris. */
   function softDeleteWhere(name, predicate) {
     var table = load(name);
@@ -241,5 +268,6 @@ var Db = (function () {
     update: update,
     softDelete: softDelete,
     softDeleteWhere: softDeleteWhere,
+    upsert: upsert,
   };
 })();

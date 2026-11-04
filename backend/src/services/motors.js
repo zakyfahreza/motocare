@@ -126,7 +126,8 @@ var MotorService = {
 
   remove: function (payload) {
     var id = requireId_(payload);
-    MotorService.getOrThrow(id);
+    var motor = MotorService.getOrThrow(id);
+    if (motor.photoUpdatedAt) PhotoService.remove({ id: id });
     Db.softDelete(SHEETS.MOTORS, id);
     return { id: id };
   },

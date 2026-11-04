@@ -135,6 +135,7 @@ Selanjutnya setiap push ke `main`:
 5. Perbarui odometer kapan saja lewat tombol **Update km** agar pengingat akurat.
 
 6. **Garasi** (Lainnya → Motor) menampilkan semua motor, spesifikasi (tangki, oli, ban), dan pengingat paling mendesak per motor.
+   **Foto motor**: tekan "Tambah foto" di kartu motor, atau buka Edit motor → Foto motor kesayangan → Galeri/Kamera. Foto dikompres otomatis dan disimpan di sheet `motor_photos`.
 7. **Laporan** menampilkan total biaya per tahun, perbandingan dengan tahun lalu, grafik bulanan, kelompok biaya, dan biaya per km.
 8. **Cadangan & ekspor**: Lainnya → Cadangkan Data (file JSON), atau Riwayat/Laporan → Ekspor (CSV untuk Excel).
 9. **Tema** terang/gelap bisa diganti di Pengaturan.

@@ -6,6 +6,7 @@ import { icon } from '../ui/icons.js';
 import { initials } from '../ui/meta.js';
 import { getActiveMotor, loadSettings } from '../state.js';
 import { APP_VERSION } from '../version.js';
+import { loadPhotos } from '../photos.js';
 
 const BACKUP_KEY = 'motocare_last_backup';
 
@@ -25,7 +26,8 @@ export function lastBackupText() {
 
 export async function render({ mount }) {
   const motor = getActiveMotor();
-  await loadSettings();
+  const [, photos] = await Promise.all([loadSettings(), loadPhotos([motor]).catch(() => ({}))]);
+  const photoUrl = motor ? photos[motor.id] : null;
 
   const menuRow = (href, iconName, title, sub) => h('a', { class: 'list-row', href },
     h('span', { class: 'tile-icon lg round' }, icon(iconName, 24)),
@@ -60,7 +62,8 @@ export async function render({ mount }) {
     }),
     motor && h('a', { class: 'card card-pad hero', href: '#/motors', 'aria-label': `Motor aktif ${motor.name}. Buka garasi untuk mengganti.` },
       h('div', { class: 'row gap-12' },
-        h('span', { class: 'tile-icon lg', style: { position: 'relative' } }, icon('two_wheeler', 28),
+        h('span', { class: ['tile-icon lg', photoUrl && 'has-photo'], style: { position: 'relative', overflow: 'visible' } },
+          photoUrl ? h('img', { class: 'photo', src: photoUrl, alt: '', style: { borderRadius: '12px' } }) : icon('two_wheeler', 28),
           h('span', { style: { position: 'absolute', right: '-3px', bottom: '-3px', width: '12px', height: '12px', borderRadius: '50%', background: 'var(--ok)', border: '2px solid var(--card)' } })),
         h('div', { class: 'stack grow' },
           h('span', { class: 'row gap-8' }, h('span', { class: 't-title truncate' }, [motor.brand, motor.model].filter(Boolean).join(' ') || motor.name), h('span', { class: 'badge badge-primary' }, 'Utama')),

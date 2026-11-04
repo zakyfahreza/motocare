@@ -8,12 +8,15 @@ import { icon } from '../ui/icons.js';
 import { BRANDS, TRANSMISSION_LABELS } from '../ui/meta.js';
 import { getMotors, loadMotors, setActiveMotorId, getActiveMotorId, invalidateMotors } from '../state.js';
 import { navigate } from '../router.js';
+import { photoPicker, loadPhotos, savePhoto, deletePhoto } from '../photos.js';
 
 export async function render({ params, mount }) {
   const isEdit = Boolean(params.id);
   await loadMotors();
   const motor = isEdit ? getMotors().find((m) => m.id === params.id) : null;
   if (isEdit && !motor) throw new Error('Motor tidak ditemukan.');
+  const photos = motor ? await loadPhotos([motor]).catch(() => ({})) : {};
+  const picker = photoPicker({ url: motor ? photos[motor.id] || null : null });
   const v = (k, d = '') => (motor && motor[k] !== null && motor[k] !== undefined ? motor[k] : d);
 
   // ---------- Identitas ----------
@@ -81,6 +84,10 @@ export async function render({ params, mount }) {
         h('span', { class: 't-h3' }, 'Daftarkan Motor Anda'),
         h('span', { class: 't-sm c-2' }, 'Data ini dipakai untuk menghitung jadwal servis, takaran oli, dan rekap biaya per motor.'),
       ),
+    ),
+    h('section', { class: 'card card-pad', 'aria-label': 'Foto motor' },
+      sectionTitle('photo_camera', 'Foto motor kesayangan', h('span', { class: 't-sm c-2' }, 'Opsional')),
+      picker.el,
     ),
     h('section', { class: 'card card-pad' },
       sectionTitle('badge', 'Identitas motor'),
@@ -169,7 +176,16 @@ export async function render({ params, mount }) {
         : await call('motors.create', { ...data, createDefaultReminders: autoSchedule.checked });
       if (makeActive.checked) setActiveMotorId(saved.id);
       invalidateMotors();
-      toast(isEdit ? 'Motor diperbarui' : 'Motor ditambahkan', 'success');
+      const photo = picker.state();
+      let photoError = null;
+      try {
+        if (photo.action === 'set' && photo.dataUrl) await savePhoto(saved.id, photo.dataUrl);
+        else if (photo.action === 'remove') await deletePhoto(saved.id);
+      } catch (err) {
+        photoError = err;
+      }
+      if (photoError) toastError({ message: `Data motor tersimpan, tetapi foto gagal disimpan: ${photoError.message}` });
+      else toast(isEdit ? 'Motor diperbarui' : 'Motor ditambahkan', 'success');
       navigate(makeActive.checked && !isEdit ? '/' : '/motors', { replace: true });
     } catch (err) {
       if (err.code === 'VALIDATION_ERROR' && err.fields) {

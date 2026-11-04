@@ -6,9 +6,10 @@ import {
 } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
 import { TRANSMISSION_LABELS } from '../ui/meta.js';
-import { getActiveMotor, setActiveMotorId, invalidateMotors } from '../state.js';
+import { getActiveMotor, setActiveMotorId, invalidateMotors, getMotors } from '../state.js';
 import { navigate } from '../router.js';
 import { exportBackup } from './more.js';
+import { loadPhotos, compressImage, savePhoto, fileInputs } from '../photos.js';
 
 function compactRupiah(n) {
   if (n >= 1e6) return `Rp ${(n / 1e6).toFixed(1).replace('.', ',').replace(',0', '')}jt`;
@@ -28,7 +29,10 @@ function reminderLine(stats) {
 }
 
 export async function render({ mount, refresh }) {
-  const { motors, totals } = await call('motors.overview');
+  const [{ motors, totals }, photos] = await Promise.all([
+    call('motors.overview'),
+    loadPhotos(getMotors()).catch(() => ({})),
+  ]);
   const active = getActiveMotor();
 
   const after = (msg) => {
@@ -65,13 +69,13 @@ export async function render({ mount, refresh }) {
       h('div', null, h('span', { class: 't-sm c-2' }, 'Jarak total'), h('strong', { class: 'stack t-title num' }, formatKm(totals.totalKm))),
       h('div', null, h('span', { class: 't-sm c-2' }, 'Bulan ini'), h('strong', { class: 'stack t-title num' }, compactRupiah(totals.monthSpend))),
     ),
-    activeCard(activeMotor, { after, removeMotor }),
+    activeCard(activeMotor, { after, removeMotor, photoUrl: photos[activeMotor.id] }),
     others.length ? h('section', { class: 'stack gap-12' },
       h('div', { class: 'row-between' },
         h('h2', { class: 'row gap-8 t-h3' }, h('span', { class: 'c-primary' }, icon('garage_home', 22)), 'Motor Lainnya di Garasi'),
         h('span', { class: 't-sm c-2', style: { fontWeight: '700' } }, `${others.length} tersimpan`),
       ),
-      others.map((m) => otherCard(m)),
+      others.map((m) => otherCard(m, photos[m.id])),
     ) : null,
     h('a', { class: 'card-soft row gap-12', href: '#/motors/new', style: { color: 'inherit' } },
       h('span', { class: 'tile-icon round', style: { background: 'var(--card)' } }, icon('two_wheeler', 22)),
@@ -81,7 +85,35 @@ export async function render({ mount, refresh }) {
   );
 }
 
-function activeCard(m, { after, removeMotor }) {
+/** Area foto motor aktif + tombol ganti/tambah foto langsung dari galeri/kamera. */
+function photoArea(m, photoUrl, after) {
+  const area = h('div', { class: ['motor-photo mt-12', photoUrl && 'has-photo'] });
+  const inputs = fileInputs(async (file) => {
+    area.classList.add('is-busy');
+    btn.disabled = true;
+    btn.replaceChildren(h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Mengunggah…');
+    try {
+      const dataUrl = await compressImage(file);
+      await savePhoto(m.id, dataUrl);
+      after('Foto motor disimpan');
+    } catch (err) {
+      toastError(err);
+      area.classList.remove('is-busy');
+      btn.disabled = false;
+      btn.replaceChildren(icon('photo_camera', 16), photoUrl ? 'Ganti foto' : 'Tambah foto');
+    }
+  });
+  const btn = h('button', { type: 'button', class: 'photo-edit', onclick: () => inputs.gallery.click() }, icon('photo_camera', 16), photoUrl ? 'Ganti foto' : 'Tambah foto');
+  area.append(
+    photoUrl ? h('img', { src: photoUrl, alt: `Foto ${m.name}` }) : icon('two_wheeler', 72),
+    btn,
+    m.tankLiters ? h('span', { class: 'photo-chip' }, icon('local_gas_station', 14), `Tangki: ${formatNumber(m.tankLiters)} Liter`) : '',
+    inputs.gallery,
+  );
+  return area;
+}
+
+function activeCard(m, { after, removeMotor, photoUrl }) {
   const menu = h('div', { class: 'menu-pop', role: 'menu', hidden: true },
     h('button', { type: 'button', role: 'menuitem', onclick: () => navigate(`/motors/${encodeURIComponent(m.id)}/edit`) }, icon('edit', 18), 'Edit motor'),
     h('button', { type: 'button', role: 'menuitem', class: 'c-late', onclick: () => { menu.hidden = true; removeMotor(m); } }, icon('delete', 18), 'Hapus motor'),
@@ -138,10 +170,7 @@ function activeCard(m, { after, removeMotor }) {
         ),
         h('div', { class: 'kebab' }, kebab, menu),
       ),
-      h('div', { class: 'motor-photo mt-12', 'aria-hidden': 'true' },
-        icon('two_wheeler', 72),
-        m.tankLiters ? h('span', { class: 'photo-chip' }, icon('local_gas_station', 14), `Tangki: ${formatNumber(m.tankLiters)} Liter`) : null,
-      ),
+      photoArea(m, photoUrl, after),
       h('div', { class: 'card mt-12', style: { padding: '12px', boxShadow: 'none' } },
         h('div', { class: 'row-between' },
           h('div', { class: 'stack' },
@@ -169,11 +198,11 @@ function activeCard(m, { after, removeMotor }) {
   );
 }
 
-function otherCard(m) {
+function otherCard(m, photoUrl) {
   const line = reminderLine(m.stats);
   return h('article', { class: 'card card-pad', 'aria-label': m.name },
     h('div', { class: 'row gap-12', style: { alignItems: 'flex-start' } },
-      h('span', { class: 'motor-thumb', 'aria-hidden': 'true' }, icon('two_wheeler', 36)),
+      h('span', { class: 'motor-thumb' }, photoUrl ? h('img', { src: photoUrl, alt: `Foto ${m.name}` }) : icon('two_wheeler', 36)),
       h('div', { class: 'stack grow' },
         h('div', { class: 'row-between' }, h('span', { class: 't-sm c-2', style: { fontWeight: '700' } }, m.plate || '—'), h('span', { class: 'badge' }, 'Standby')),
         h('span', { class: 't-title', style: { fontSize: '16px' } }, [m.brand, m.model].filter(Boolean).join(' ') || m.name),

@@ -29,7 +29,7 @@ test('setup idempoten: sheet, kategori, token', () => {
   app.ctx.setup();
   assert.equal(app.props.API_TOKEN, token);
   const names = app.spreadsheet().getSheets().map((s) => s.getName()).sort();
-  assert.deepEqual(names, ['categories', 'meta', 'motors', 'record_items', 'records', 'reminders']);
+  assert.deepEqual(names, ['categories', 'meta', 'motor_photos', 'motors', 'record_items', 'records', 'reminders']);
   const cats = okData(app.call('settings.get', {})).categories;
   assert.equal(cats.length, 17);
   assert.equal(app.spreadsheet().getSheetByName('meta').getLastRow(), 2);
@@ -313,4 +313,60 @@ test('v2: records.list sumTotal, records.export, reports.summary, backup.export,
   assert.equal(bk.records.length, 4);
   assert.equal(bk.recordItems.length, 5);
   assert.equal(bk.motors.length, 1);
+});
+
+test('v3: foto motor — simpan, pecah per sel, ambil, ganti, hapus, validasi', () => {
+  const app = setupApp();
+  const a = okData(app.call('motors.create', { name: 'Vario', odometerStart: 0 }));
+  const b = okData(app.call('motors.create', { name: 'Beat', odometerStart: 0 }));
+
+  // Validasi
+  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id })), 'VALIDATION_ERROR');
+  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:text/html;base64,PHNjcmlwdD4=' })), 'VALIDATION_ERROR');
+  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:image/jpeg;base64,<bukan base64>' })), 'VALIDATION_ERROR');
+  assert.equal(errCode(app.call('motors.setPhoto', { id: a.id, dataUrl: 'data:image/jpeg;base64,' + 'A'.repeat(app.ctx.PHOTO_MAX_CHARS) })), 'VALIDATION_ERROR');
+  assert.equal(errCode(app.call('motors.setPhoto', { id: 'tidak-ada', dataUrl: 'data:image/jpeg;base64,AAAA' })), 'NOT_FOUND');
+
+  // Foto besar (> 1 sel) dipecah, diawali '+' di sel lanjutan tetap utuh
+  const body = ('+/AB'.repeat(25000)).slice(0, 99990);
+  const big = 'data:image/jpeg;base64,' + body;
+  const saved = okData(app.call('motors.setPhoto', { id: a.id, dataUrl: big }));
+  assert.ok(saved.photoUpdatedAt);
+  const sheet = app.spreadsheet().getSheetByName('motor_photos');
+  const row = sheet.data[1];
+  assert.ok(row.every((cell) => typeof cell !== 'string' || cell.length <= 40001), 'tiap sel ≤ 40.000 karakter');
+  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], big);
+  assert.equal(okData(app.call('motors.list', {})).find((m) => m.id === a.id).photoUpdatedAt, saved.photoUpdatedAt);
+
+  // Ganti foto: baris yang sama ditimpa (tidak menambah baris)
+  const small = 'data:image/webp;base64,UklGRg==';
+  okData(app.call('motors.setPhoto', { id: a.id, dataUrl: small }));
+  okData(app.call('motors.setPhoto', { id: b.id, dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }));
+  assert.equal(sheet.getLastRow(), 3);
+  const photos = okData(app.call('motors.getPhotos', { ids: [a.id] }));
+  assert.deepEqual(Object.keys(photos), [a.id]);
+  assert.equal(photos[a.id], small);
+
+  // Hapus foto: data dikosongkan
+  okData(app.call('motors.removePhoto', { id: a.id }));
+  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], undefined);
+  assert.equal(okData(app.call('motors.list', {})).find((m) => m.id === a.id).photoUpdatedAt, '');
+  assert.ok(!sheet.data[1].some((c) => typeof c === 'string' && c.startsWith('data:')));
+  okData(app.call('motors.setPhoto', { id: a.id, dataUrl: small }));
+  assert.equal(okData(app.call('motors.getPhotos', {}))[a.id], small, 'baris terhapus bisa dipakai lagi');
+
+  // Hapus motor ikut membersihkan foto; backup memuat foto aktif
+  okData(app.call('motors.delete', { id: b.id }));
+  const bk = okData(app.call('backup.export', {}));
+  assert.deepEqual(Object.keys(bk.motorPhotos), [a.id]);
+});
+
+test('v3: sheet foto dibuat otomatis jika belum ada (spreadsheet lama)', () => {
+  const app = setupApp();
+  const ss = app.spreadsheet();
+  ss.deleteSheet(ss.getSheetByName('motor_photos'));
+  const m = okData(app.call('motors.create', { name: 'Vario', odometerStart: 0 }));
+  okData(app.call('motors.setPhoto', { id: m.id, dataUrl: 'data:image/jpeg;base64,/9j/4AAQ' }));
+  assert.ok(ss.getSheetByName('motor_photos'));
+  assert.equal(okData(app.call('motors.getPhotos', {}))[m.id], 'data:image/jpeg;base64,/9j/4AAQ');
 });
